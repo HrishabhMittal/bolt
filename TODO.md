@@ -20,7 +20,8 @@
 - [X] defining internal functions and calling their bytecode
 - [X] add `print()` to actually print stuff
 - [X] add arrays
-- [ ] structs with methods
+- [X] structs 
+- [ ] add methods to structs
 - [ ] enums (rust-like)
 - [ ] generics
 - [ ] function overloading?
