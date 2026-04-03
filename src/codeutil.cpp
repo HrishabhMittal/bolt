@@ -81,10 +81,22 @@ struct loop_break_continue {
     uint64_t undeclare;
     uint64_t index;
 };
+struct StructFeild {
+    std::string name;
+    std::string type;
+};
+
+struct StructInfo {
+    std::string name;
+    int total_size;
+    std::vector<StructFeild> fields;
+    std::map<std::string, int> offsets;
+    std::map<std::string, std::string> types;
+};
 class Program {
     uint64_t iden_stack_size = 0;
     std::string pushing_to_func;
-
+    std::map<std::string, StructInfo> structs_info;
     std::string data_section;
     // instructions i need to patch, which contain function calls
     std::map<std::string, std::vector<call_ref_in_map>> patch_function;
@@ -117,6 +129,34 @@ class Program {
         code.reserve(1024);
         scope.reserve(16);
         scope.push_back({});
+    }
+
+    void declare_struct(std::string name, const std::vector<StructFeild> &fields) {
+        StructInfo info;
+        info.name = name;
+        info.fields = fields;
+        int current_size = 0;
+
+        for (auto &f : fields) {
+            int align = get_type_size(f.type);
+            if (current_size % align != 0) {
+                current_size += align - (current_size % align);
+            }
+            info.offsets[f.name] = current_size;
+            info.types[f.name] = f.type;
+            current_size += align;
+        }
+
+        if (current_size % 8 != 0) {
+            current_size += 8 - (current_size % 8);
+        }
+
+        info.total_size = current_size;
+        structs_info[name] = info;
+    }
+    StructInfo get_struct(std::string name) {
+        if (structs_info.count(name)) return structs_info[name];
+        error("struct " + name + " not found.");
     }
     void add_break(uint64_t undeclare_then_jmp_ptr) {
         loop_break_continue bc;

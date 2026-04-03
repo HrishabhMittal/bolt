@@ -27,6 +27,7 @@ class Emitter {
     void emitcode(std::string filename) {
         std::vector<GlobalDeclarationAST *> globals;
         std::vector<FunctionAST *> functions;
+        std::vector<StructDefinitionAST *> structs;
         std::map<std::string, GlobalDeclarationAST *> global_map;
 
         for (auto &prog : progs) {
@@ -42,6 +43,8 @@ class Emitter {
                     std::string extend = glob->pkg_name + "." + glob->identifier.value;
                     globals.push_back(glob);
                     global_map[extend] = glob;
+                } else if (auto struct_def = dynamic_cast<StructDefinitionAST *>(statement.get())) { 
+                    structs.push_back(struct_def);
                 }
             }
         }
@@ -69,7 +72,9 @@ class Emitter {
             state[name] = 2;
             sorted_globals.push_back(glob);
         };
-
+        for (auto &s : structs) {
+            s->codegen(program);
+        }
         for (auto &g : globals) {
             std::string extended_name = g->pkg_name + "." + g->identifier.value;
             if (state[extended_name] == 0) {

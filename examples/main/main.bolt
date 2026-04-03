@@ -2,6 +2,22 @@ package main
 import "fmt"
 import "mathlib"
 
+struct Point {
+    x i32,
+    y i32
+}
+struct Rect {
+    topLeft Point,
+    bottomRight Point
+}
+
+function printPoint(p Point) (void) {
+    fmt.printstring("Point(")
+    fmt.printi32(p.x)
+    fmt.printstring(", ")
+    fmt.printi32(p.y)
+    fmt.printstring(")\n")
+}
 function printArray(arr []i32,len i32) (void) {
     fmt.printstring("[")
     for i:=0;i<len;i=i+1 {
@@ -55,5 +71,21 @@ function main() (i32) {
 
 
     someBC()
+    pt1 := Point { 10, 20 }
+
+    printPoint(pt1)
+    
+    pt1.x = 30
+
+    printPoint(pt1)
+
+    myRect := Rect { 
+        Point { 0, 0 }, 
+        Point { 50, 50 } 
+    }
+    myRect.topLeft.x = 3
+
+    printPoint(myRect.topLeft)
+
     return 120
 }

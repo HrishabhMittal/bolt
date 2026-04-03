@@ -104,7 +104,8 @@ class Parser {
         expect(TokenType::NEWLINE);
         return std::make_unique<BreakContinueAST>(keyword);
     }
-    std::unique_ptr<ExprAST> parseValue() {
+
+    std::unique_ptr<ExprAST> parseValue(bool allowStructInit = true) {
         // std::cout << "parsing value at: ";
         // std::cout << tokenToString(currentToken) << std::endl;
         if (match(TokenType::KEYWORD, "false") || match(TokenType::KEYWORD, "true"))
@@ -115,62 +116,90 @@ class Parser {
             return std::make_unique<StringExprAST>(expect(TokenType::STRING));
         if (match(TokenType::IDENTIFIER)) {
             Token id = expect(TokenType::IDENTIFIER);
-            if (match(TokenType::PUNCTUATOR, ".")) {
+            std::string base_name = id.value;
+            std::string pkg = current_package;
+
+            if (match(TokenType::PUNCTUATOR, ".") && current_imports.count(id.value)) {
                 next();
-                Token field = expect(TokenType::IDENTIFIER);
-                std::string pkg = id.value;
-                if (current_imports.count(id.value)) {
-                    pkg = current_imports[id.value];
-                }
-                id.value = pkg + "." + field.value;
+                Token next_id = expect(TokenType::IDENTIFIER);
+                base_name = current_imports[id.value] + "." + next_id.value;
+                pkg = current_imports[id.value];
             }
+
+            if (allowStructInit && match(TokenType::PUNCTUATOR, "{")) {
+                next();
+                std::vector<std::unique_ptr<ExprAST>> args;
+                if (!match(TokenType::PUNCTUATOR, "}")) {
+                    while (true) {
+                        args.push_back(parseExpr());
+                        if (!match(TokenType::PUNCTUATOR, ","))
+                            break;
+                        expect(TokenType::PUNCTUATOR, ",");
+                    }
+                }
+                expect(TokenType::PUNCTUATOR, "}");
+
+                std::string struct_type = base_name;
+                if (struct_type.find('.') == std::string::npos)
+                    struct_type = current_package + "." + struct_type;
+
+                return std::make_unique<StructInitAST>(struct_type, std::move(args));
+            }
+
             if (match(TokenType::PUNCTUATOR, "(")) {
                 next();
                 std::vector<std::unique_ptr<ExprAST>> args;
                 if (!match(TokenType::PUNCTUATOR, ")")) {
                     while (true) {
                         args.push_back(parseExpr());
-                        if (!match(TokenType::PUNCTUATOR, ",")) {
+                        if (!match(TokenType::PUNCTUATOR, ","))
                             break;
-                        }
                         expect(TokenType::PUNCTUATOR, ",");
                     }
                 }
                 expect(TokenType::PUNCTUATOR, ")");
+                id.value = base_name;
                 return std::make_unique<CallExprAST>(id, std::move(args), current_package);
-            } else if (match(TokenType::PUNCTUATOR, "[")) {
-                std::unique_ptr<ExprAST> iden = std::make_unique<IdentifierExprAST>(id, current_package);
-                while (match(TokenType::PUNCTUATOR, "[")) {
-                    expect(TokenType::PUNCTUATOR, "[");
-                    std::unique_ptr<ExprAST> index = parseExpr();
-                    expect(TokenType::PUNCTUATOR, "]");
-                    iden = std::make_unique<ArrayIndexedAST>(std::move(iden), std::move(index));
-                }
-                return iden;
             }
-            return std::make_unique<IdentifierExprAST>(id, current_package);
+
+            id.value = base_name;
+            std::unique_ptr<ExprAST> expr = std::make_unique<IdentifierExprAST>(id, current_package);
+
+            while (match(TokenType::PUNCTUATOR, "[") || match(TokenType::PUNCTUATOR, ".")) {
+                if (match(TokenType::PUNCTUATOR, "[")) {
+                    expect(TokenType::PUNCTUATOR, "[");
+                    auto index = parseExpr();
+                    expect(TokenType::PUNCTUATOR, "]");
+                    expr = std::make_unique<ArrayIndexedAST>(std::move(expr), std::move(index));
+                } else if (match(TokenType::PUNCTUATOR, ".")) {
+                    expect(TokenType::PUNCTUATOR, ".");
+                    Token field = expect(TokenType::IDENTIFIER);
+                    expr = std::make_unique<StructAccessAST>(std::move(expr), field.value);
+                }
+            }
+            return expr;
         }
         currentToken.error("Invalid value expression");
     }
 
-    std::unique_ptr<ExprAST> parseTerm() {
+    std::unique_ptr<ExprAST> parseTerm(bool allowStructInit = true) {
         // std::cout << "parsing term at: ";
         // std::cout << currentToken << std::endl;
         if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!") ||
             match(TokenType::PUNCTUATOR, "+")) {
             Token op = currentToken;
             next();
-            auto operand = parseTerm();
+            auto operand = parseTerm(allowStructInit);
             return std::make_unique<UnaryExprAST>(op, std::move(operand));
         }
-        return parseValue();
+        return parseValue(allowStructInit);
     }
 
-    std::unique_ptr<ExprAST> parseParenExpr() {
+    std::unique_ptr<ExprAST> parseParenExpr(bool allowStructInit = true) {
         // std::cout << "parsing parentexpr at: ";
         // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::PUNCTUATOR, "(");
-        auto expr = parseExpr();
+        auto expr = parseExpr(allowStructInit);
         expect(TokenType::PUNCTUATOR, ")");
         // std::cout << "parsing parentexpr complete at: ";
         // std::cout << tokenToString(currentToken) << std::endl;
@@ -211,7 +240,7 @@ class Parser {
         expect(TokenType::PUNCTUATOR, "}");
         return std::make_unique<ArrayExprAST>(array_type, std::move(num), std::move(args));
     }
-    std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0) {
+    std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0, bool allowStructInit = true) {
         // std::cout << "ExprAST at " << currentToken << std::endl;
         std::unique_ptr<ExprAST> lhs;
         if (match(TokenType::PUNCTUATOR, "("))
@@ -219,7 +248,7 @@ class Parser {
         else if (match(TokenType::PUNCTUATOR, "["))
             lhs = parseArray();
         else
-            lhs = parseTerm();
+            lhs = parseTerm(allowStructInit);
         while (true) {
             if (match(TokenType::KEYWORD, "as")) {
                 next();
@@ -238,7 +267,7 @@ class Parser {
             Token op = currentToken;
             next();
             int nextPrec = (tokPrec == 1) ? tokPrec : tokPrec + 1;
-            auto rhs = parseExpr(nextPrec);
+            auto rhs = parseExpr(nextPrec, allowStructInit);
             lhs = std::make_unique<BinaryExprAST>(std::move(lhs), op, std::move(rhs));
         }
     }
@@ -293,33 +322,60 @@ class Parser {
         }
         currentToken.error("Unknown global declaration statement");
     }
+
+    std::unique_ptr<GlobalStatementAST> parseStructDefinition() {
+        expect(TokenType::KEYWORD, "struct");
+        Token name = expect(TokenType::IDENTIFIER);
+        expect(TokenType::PUNCTUATOR, "{");
+
+        std::vector<StructFeild> fields;
+        while (!match(TokenType::PUNCTUATOR, "}")) {
+            if (match(TokenType::NEWLINE)) {
+                next();
+                continue;
+            }
+
+            Token field_name = expect(TokenType::IDENTIFIER);
+            std::string type = parseTypeName();
+            fields.push_back({field_name.value, type});
+
+            if (match(TokenType::PUNCTUATOR, ",") || match(TokenType::PUNCTUATOR, ";"))
+                next();
+        }
+        expect(TokenType::PUNCTUATOR, "}");
+        expect(TokenType::NEWLINE);
+        return std::make_unique<StructDefinitionAST>(name, current_package, std::move(fields));
+    }
     std::unique_ptr<ExprAST> parseLvalue() {
         Token id = expect(TokenType::IDENTIFIER);
 
-        std::string pkg = id.value;
-        if (match(TokenType::PUNCTUATOR, ".")) {
+        if (match(TokenType::PUNCTUATOR, ".") && current_imports.count(id.value)) {
             next();
-            Token field = expect(TokenType::IDENTIFIER);
-            if (current_imports.count(id.value)) {
-                pkg = current_imports[id.value];
-            }
-            id.value = pkg + "." + field.value;
+            Token next_id = expect(TokenType::IDENTIFIER);
+            id.value = current_imports[id.value] + "." + next_id.value;
         }
 
         std::unique_ptr<ExprAST> lhs = std::make_unique<IdentifierExprAST>(id, current_package);
 
-        while (match(TokenType::PUNCTUATOR, "[")) {
-            expect(TokenType::PUNCTUATOR, "[");
-            std::unique_ptr<ExprAST> index = parseExpr();
-            expect(TokenType::PUNCTUATOR, "]");
-            lhs = std::make_unique<ArrayIndexedAST>(std::move(lhs), std::move(index));
+        while (match(TokenType::PUNCTUATOR, "[") || match(TokenType::PUNCTUATOR, ".")) {
+            if (match(TokenType::PUNCTUATOR, "[")) {
+                expect(TokenType::PUNCTUATOR, "[");
+                std::unique_ptr<ExprAST> index = parseExpr();
+                expect(TokenType::PUNCTUATOR, "]");
+                lhs = std::make_unique<ArrayIndexedAST>(std::move(lhs), std::move(index));
+            } else if (match(TokenType::PUNCTUATOR, ".")) {
+                expect(TokenType::PUNCTUATOR, ".");
+                Token field = expect(TokenType::IDENTIFIER);
+                lhs = std::make_unique<StructAccessAST>(std::move(lhs), field.value);
+            }
         }
-
         return lhs;
     }
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement() {
         // std::cout << "parsing statment at: ";
         // std::cout << tokenToString(currentToken) << std::endl;
+        if (match(TokenType::KEYWORD, "struct"))
+            return parseStructDefinition();
         if (match(TokenType::KEYWORD, "function"))
             return parseFunction();
         if (match(TokenType::KEYWORD, "extern"))
@@ -339,11 +395,11 @@ class Parser {
             expect(TokenType::NEWLINE);
         return std::make_unique<JustExprAST>(std::move(x));
     }
-    std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false) {
-        auto lhs = parseExpr();
+    std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false, bool allowStructInit = true) {
+        auto lhs = parseExpr(0, allowStructInit);
         if (match(TokenType::PUNCTUATOR, ":=")) {
             next();
-            auto rhs = parseExpr();
+            auto rhs = parseExpr(0, allowStructInit);
             if (!For)
                 expect(TokenType::NEWLINE);
             if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
@@ -353,7 +409,7 @@ class Parser {
             }
         } else if (match(TokenType::PUNCTUATOR, "=")) {
             next();
-            auto rhs = parseExpr();
+            auto rhs = parseExpr(0, allowStructInit);
             if (!For)
                 expect(TokenType::NEWLINE);
             return std::make_unique<AssignmentAST>(std::move(lhs), std::move(rhs), current_package);
@@ -423,7 +479,7 @@ class Parser {
         // std::cout << "parsing condition: " << std::endl;
         // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "if");
-        auto ifCond = parseExpr();
+        auto ifCond = parseExpr(0, false);
         auto ifBlock = parseBlock();
         auto condAST = std::make_unique<ConditionalAST>(std::move(ifCond), std::move(ifBlock));
 
@@ -431,7 +487,7 @@ class Parser {
             next();
             if (match(TokenType::KEYWORD, "if")) {
                 next();
-                auto elifCond = parseExpr();
+                auto elifCond = parseExpr(0, false);
                 auto elifBlock = parseBlock();
                 condAST->elseIfs.push_back({std::move(elifCond), std::move(elifBlock)});
             } else {
@@ -445,7 +501,7 @@ class Parser {
         // std::cout << "parsing while: " << std::endl;
         // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "while");
-        auto cond = parseExpr();
+        auto cond = parseExpr(0, false);
         insideLoop++;
         auto body = parseBlock();
         insideLoop--;
@@ -464,11 +520,11 @@ class Parser {
         // std::cout << "parsing for: " << std::endl;
         // std::cout << tokenToString(currentToken) << std::endl;
         expect(TokenType::KEYWORD, "for");
-        auto init = parseDeclarationAssignmentOrExpr(true);
+        auto init = parseDeclarationAssignmentOrExpr(true, true);
         expect(TokenType::PUNCTUATOR, ";");
-        auto cond = parseExpr();
+        auto cond = parseExpr(0, false);
         expect(TokenType::PUNCTUATOR, ";");
-        auto update = parseDeclarationAssignmentOrExpr(true);
+        auto update = parseDeclarationAssignmentOrExpr(true, false);
         insideLoop++;
         auto body = parseBlock();
         insideLoop--;

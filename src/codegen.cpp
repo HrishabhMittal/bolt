@@ -579,6 +579,68 @@ class ArrayExprAST : public ExprAST {
         }
     }
 };
+
+class StructDefinitionAST : public GlobalStatementAST {
+  public:
+    Token name;
+    std::string pkg_name;
+    std::vector<StructFeild> fields;
+
+    StructDefinitionAST(Token n, std::string pkg, std::vector<StructFeild> f)
+        : name(n), pkg_name(pkg), fields(std::move(f)) {}
+
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "StructDefinitionAST: " << std::endl;
+        indent += 2;
+
+        printSpace(indent);
+        std::cout << "name: " << name.value << std::endl;
+
+        printSpace(indent);
+        std::cout << "fields:" << std::endl;
+        for (const auto &field : fields) {
+            printSpace(indent + 2);
+            std::cout << field.type << " " << field.name << std::endl;
+        }
+    }
+    virtual void codegen(Program &program) override {
+        std::string resolved_name = pkg_name + "." + name.value;
+        program.declare_struct(resolved_name, fields);
+    }
+};
+class StructAccessAST : public ExprAST {
+  public:
+    std::unique_ptr<ExprAST> expr;
+    std::string field_name;
+
+    StructAccessAST(std::unique_ptr<ExprAST> e, std::string f) : expr(std::move(e)), field_name(f) {}
+
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "StructAccessAST: ." << field_name << std::endl;
+        expr->print(indent + 2);
+    }
+    virtual std::vector<std::string> get_dependencies() override { return expr->get_dependencies(); }
+    virtual std::string evaltype(Program &program) override {
+        StructInfo info = program.get_struct(expr->evaltype(program));
+        if (!info.types.count(field_name))
+            error("Field " + field_name + " not found.");
+        return info.types[field_name];
+    }
+
+    virtual void codegen(Program &program) override {
+        StructInfo info = program.get_struct(expr->evaltype(program));
+        int offset = info.offsets[field_name];
+        std::string type = info.types[field_name];
+        int type_size = get_type_size(type);
+        int index = offset / type_size;
+
+        expr->codegen(program);
+        program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
+        program.push({load_type(type_size, type_is_unsigned(type)), {}});
+    }
+};
 class GlobalDeclarationAST : public GlobalStatementAST {
   public:
     Token identifier;
@@ -666,6 +728,22 @@ class AssignmentAST : public StatementAST {
             arr->index->codegen(program);
             expr->codegen(program);
             program.push({store_type(get_type_size(element_type)), {}});
+        } else if (auto str_acc = dynamic_cast<StructAccessAST *>(lhs.get())) {
+            std::string struct_type = str_acc->expr->evaltype(program);
+            StructInfo info = program.get_struct(struct_type);
+            int offset = info.offsets[str_acc->field_name];
+            std::string type = info.types[str_acc->field_name];
+
+            if (type != expr_type)
+                error("Cannot assign " + expr_type + " to field of type " + type);
+
+            int type_size = get_type_size(type);
+            int index = offset / type_size;
+
+            str_acc->expr->codegen(program);
+            program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
+            expr->codegen(program);
+            program.push({store_type(type_size), {}});
         } else {
             error("Invalid left-hand side in assignment");
         }
@@ -1026,6 +1104,50 @@ class JustExprAST : public StatementAST {
         expr->codegen(program);
         if (expr->evaltype(program) != "void") {
             program.push({bvm::OPCODE::POP});
+        }
+    }
+};
+class StructInitAST : public ExprAST {
+  public:
+    std::string type;
+    std::vector<std::unique_ptr<ExprAST>> args;
+
+    StructInitAST(std::string t, std::vector<std::unique_ptr<ExprAST>> a) : type(t), args(std::move(a)) {}
+
+    virtual void print(int indent = 0) override {
+        printSpace(indent);
+        std::cout << "StructInitAST: " << type << std::endl;
+        for (auto &&i : args)
+            i->print(indent + 2);
+    }
+    virtual std::vector<std::string> get_dependencies() override {
+        std::vector<std::string> deps;
+        for (auto &a : args) {
+            auto d = a->get_dependencies();
+            deps.insert(deps.end(), d.begin(), d.end());
+        }
+        return deps;
+    }
+    virtual std::string evaltype(Program &program) override { return type; }
+
+    virtual void codegen(Program &program) override {
+        StructInfo info = program.get_struct(type);
+        if (args.size() != info.fields.size())
+            error("Struct init argument count mismatch.");
+
+        program.push({bvm::OPCODE::PUSH, {(uint64_t)info.total_size}});
+        program.push({bvm::OPCODE::MALLOC, {}});
+
+        for (size_t i = 0; i < args.size(); i++) {
+            std::string field_name = info.fields[i].name;
+            int offset = info.offsets[field_name];
+            int type_size = get_type_size(info.fields[i].type);
+            int index = offset / type_size;
+
+            program.push({bvm::OPCODE::DUP});
+            program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
+            args[i]->codegen(program);
+            program.push({store_type(type_size), {}});
         }
     }
 };
