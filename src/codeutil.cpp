@@ -1,4 +1,5 @@
 #include "lexer.cpp"
+#include <cstdint>
 std::vector<std::vector<std::string>> ops_by_precedence = {
     {"()", "[]", ".", "->"},
     {"++", "--", "+", "-", "!", "~", "*", "&"},
@@ -114,6 +115,9 @@ class Program {
     std::vector<std::vector<loop_break_continue>> breaks, continues;
     std::vector<uint64_t> declared;
     std::vector<bvm::instruction> code;
+    std::vector<bvm::instruction> struct_defs;
+    // long ahh name, can shorten it or might become unreadable (grown ahh man worrying about code readability btw)
+    std::map<std::string,uint64_t> struct_full_name_to_program_def;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;
     void precalc_all_offsets() {
@@ -136,8 +140,12 @@ class Program {
         info.name = name;
         info.fields = fields;
         int current_size = 0;
-
+        // todo: register struct to map struct_full_name_to_program_def (basically uncomment the line)
+        // struct_full_name_to_program_def[name] = struct_full_name_to_program_def.size(); // should work
+        // struct_defs.push_back({bvm::OPCODE::DEF_STRUCT});
         for (auto &f : fields) {
+
+            // todo: add feilds to .struct_defs 
             int align = get_type_size(f.type);
             if (current_size % align != 0) {
                 current_size += align - (current_size % align);
@@ -146,6 +154,7 @@ class Program {
             info.types[f.name] = f.type;
             current_size += align;
         }
+        // struct_defs.push_back({bvm::OPCODE::END_STRUCT});
 
         if (current_size % 8 != 0) {
             current_size += 8 - (current_size % 8);
@@ -191,6 +200,15 @@ class Program {
         }
     }
     bvm::program construct_full_code() {
+        // todo: read the code, i dont remember globals using hardcoded offsets for anything but you can never be too sure
+        // make sure the statement below doesnt break anything
+        // trying to add gc support at 230am is never a good idea
+        
+
+        // struct defs is not used again so this should be fine
+        std::swap(code,struct_defs);
+        code.insert(code.end(),struct_defs.begin(),struct_defs.end());
+
         // global decls alr there
         push_call("main.main");
         code.push_back({bvm::OPCODE::HALT});
