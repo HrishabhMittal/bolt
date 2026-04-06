@@ -471,10 +471,12 @@ class CallExprAST : public ExprAST {
     }
     virtual void codegen(Program &program) override {
         Function resolved_func = program.get_function(callee.value, pkg_name);
+        if (resolved_func.argtypes.size() > args.size()) {
+            error("not enough arguments provided");
+        } else if (resolved_func.argtypes.size() < args.size()) {
+            error("too many arguments provided");
+        }
         for (size_t i = 0; i < args.size(); i++) {
-            if (i >= resolved_func.argtypes.size()) {
-                error("not enough arguments provided");
-            }
             if (args[i]->evaltype(program) != resolved_func.argtypes[i]) {
                 error("arguments in call list do not match the function signature.");
             }
