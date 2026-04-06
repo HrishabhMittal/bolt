@@ -39,8 +39,9 @@ int32_t get_type_size(const std::string &s) {
 
 int32_t is_pointer(const std::string &s) {
     const std::vector<std::string> v{"u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64"};
-    for (auto i:v) {
-        return false;
+    for (auto i : v) {
+        if (i == s)
+            return false;
     }
     return true;
 }
@@ -157,7 +158,8 @@ class Program {
             if (current_size % align != 0) {
                 current_size += align - (current_size % align);
             }
-            if (is_pointer(f.type)) struct_defs.push_back({bvm::OPCODE::PTR_AT,{static_cast<uint64_t>(current_size/8)}});
+            if (is_pointer(f.type))
+                struct_defs.push_back({bvm::OPCODE::PTR_AT, {static_cast<uint64_t>(current_size / 8)}});
             info.offsets[f.name] = current_size;
             info.types[f.name] = f.type;
             current_size += align;
@@ -166,7 +168,7 @@ class Program {
         if (current_size % 8 != 0) {
             current_size += 8 - (current_size % 8);
         }
-        struct_defs.push_back({bvm::OPCODE::STRUCT_SIZE,{static_cast<uint64_t>(current_size)}});
+        struct_defs.push_back({bvm::OPCODE::STRUCT_SIZE, {static_cast<uint64_t>(current_size)}});
         struct_defs.push_back({bvm::OPCODE::END_STRUCT});
         info.total_size = current_size;
         structs_info[name] = info;
