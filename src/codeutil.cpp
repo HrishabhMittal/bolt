@@ -180,13 +180,13 @@ class Program {
     }
     void add_break(uint64_t undeclare_then_jmp_ptr) {
         loop_break_continue bc;
-        bc.undeclare = scope.back().size();
+        bc.undeclare = iden_stack_size - declared.back();
         bc.index = undeclare_then_jmp_ptr;
         breaks.back().push_back(bc);
     }
     void add_continues(uint64_t undeclare_then_jmp_ptr) {
         loop_break_continue bc;
-        bc.undeclare = scope.back().size();
+        bc.undeclare = iden_stack_size - declared.back();
         bc.index = undeclare_then_jmp_ptr;
         continues.back().push_back(bc);
     }

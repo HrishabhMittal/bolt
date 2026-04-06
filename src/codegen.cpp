@@ -568,7 +568,8 @@ class ArrayExprAST : public ExprAST {
         if (val < type_size * args.size())
             size->number.error("size too small to hold all elements.");
         program.push({bvm::OPCODE::PUSH, {val}});
-        program.push({bvm::OPCODE::MALLOC, {}});
+        const uint64_t is_ptr = is_pointer(type) ? 1 : 0;
+        program.push({bvm::OPCODE::MALLOC, {is_ptr}});
         uint64_t index = 0;
         for (auto &&i : args) {
             program.push({bvm::OPCODE::DUP});
