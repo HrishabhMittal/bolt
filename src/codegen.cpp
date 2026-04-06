@@ -1135,9 +1135,7 @@ class StructInitAST : public ExprAST {
         if (args.size() != info.fields.size())
             error("Struct init argument count mismatch.");
 
-        program.push({bvm::OPCODE::PUSH, {(uint64_t)info.total_size}});
-        program.push({bvm::OPCODE::MALLOC, {}});
-
+        program.push({bvm::OPCODE::MALLOC_STRUCT, {program.struct_full_name_to_program_def[info.name]}});
         for (size_t i = 0; i < args.size(); i++) {
             std::string field_name = info.fields[i].name;
             int offset = info.offsets[field_name];

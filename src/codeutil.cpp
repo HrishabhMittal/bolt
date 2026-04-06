@@ -1,4 +1,5 @@
 #include "lexer.cpp"
+#include "opcode.hpp"
 #include <cstdint>
 std::vector<std::vector<std::string>> ops_by_precedence = {
     {"()", "[]", ".", "->"},
@@ -34,6 +35,14 @@ int32_t get_type_size(const std::string &s) {
         return 2;
     else
         return 8;
+}
+
+int32_t is_pointer(const std::string &s) {
+    const std::vector<std::string> v{"u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64"};
+    for (auto i:v) {
+        return false;
+    }
+    return true;
 }
 bvm::OPCODE load_type(int size, bool is_unsigned) {
     if (size == 1) {
@@ -117,7 +126,6 @@ class Program {
     std::vector<bvm::instruction> code;
     std::vector<bvm::instruction> struct_defs;
     // long ahh name, can shorten it or might become unreadable (grown ahh man worrying about code readability btw)
-    std::map<std::string,uint64_t> struct_full_name_to_program_def;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;
     void precalc_all_offsets() {
@@ -135,36 +143,37 @@ class Program {
         scope.push_back({});
     }
 
+    std::map<std::string, uint64_t> struct_full_name_to_program_def;
     void declare_struct(std::string name, const std::vector<StructFeild> &fields) {
         StructInfo info;
         info.name = name;
         info.fields = fields;
         int current_size = 0;
-        // todo: register struct to map struct_full_name_to_program_def (basically uncomment the line)
-        // struct_full_name_to_program_def[name] = struct_full_name_to_program_def.size(); // should work
-        // struct_defs.push_back({bvm::OPCODE::DEF_STRUCT});
+        struct_full_name_to_program_def[name] = struct_full_name_to_program_def.size(); // should work
+        struct_defs.push_back({bvm::OPCODE::DEF_STRUCT});
         for (auto &f : fields) {
-
-            // todo: add feilds to .struct_defs 
+            // todo: add feilds to .struct_defs
             int align = get_type_size(f.type);
             if (current_size % align != 0) {
                 current_size += align - (current_size % align);
             }
+            if (is_pointer(f.type)) struct_defs.push_back({bvm::OPCODE::PTR_AT,{static_cast<uint64_t>(current_size/8)}});
             info.offsets[f.name] = current_size;
             info.types[f.name] = f.type;
             current_size += align;
         }
-        // struct_defs.push_back({bvm::OPCODE::END_STRUCT});
 
         if (current_size % 8 != 0) {
             current_size += 8 - (current_size % 8);
         }
-
+        struct_defs.push_back({bvm::OPCODE::STRUCT_SIZE,{static_cast<uint64_t>(current_size)}});
+        struct_defs.push_back({bvm::OPCODE::END_STRUCT});
         info.total_size = current_size;
         structs_info[name] = info;
     }
     StructInfo get_struct(std::string name) {
-        if (structs_info.count(name)) return structs_info[name];
+        if (structs_info.count(name))
+            return structs_info[name];
         error("struct " + name + " not found.");
     }
     void add_break(uint64_t undeclare_then_jmp_ptr) {
@@ -200,14 +209,13 @@ class Program {
         }
     }
     bvm::program construct_full_code() {
-        // todo: read the code, i dont remember globals using hardcoded offsets for anything but you can never be too sure
-        // make sure the statement below doesnt break anything
-        // trying to add gc support at 230am is never a good idea
-        
+        // todo: read the code, i dont remember globals using hardcoded offsets for anything but you can never be too
+        // sure make sure the statement below doesnt break anything trying to add gc support at 230am is never a good
+        // idea
 
         // struct defs is not used again so this should be fine
-        std::swap(code,struct_defs);
-        code.insert(code.end(),struct_defs.begin(),struct_defs.end());
+        std::swap(code, struct_defs);
+        code.insert(code.end(), struct_defs.begin(), struct_defs.end());
 
         // global decls alr there
         push_call("main.main");
