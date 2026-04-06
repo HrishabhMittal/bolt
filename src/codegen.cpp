@@ -875,11 +875,12 @@ class FunctionAST : public GlobalStatementAST {
         proto->codegen(program);
         body->codegen(program, push_scope);
 
+        // undeclare first then ret, bro really messed up something so simple
+        program.delete_scope();
         program.push({bvm::OPCODE::RET, {}});
         // generates redundant instruction for function calls, but DO NOT remove it
         // the instruction is required in normal scope, just leave it be for now
         // optimisation comes later
-        program.delete_scope();
         program.push_in_func("");
     }
 };
