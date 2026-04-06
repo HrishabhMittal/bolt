@@ -1,6 +1,6 @@
 # Bolt
 
-Bolt is a statically-typed programming language running on the Bolt Virtual Machine (BVM). 
+Bolt is a statically-typed programming language running on the [Bolt Virtual Machine (BVM)](https://github.com/HrishabhMittal/bvm). 
 This langauge takes heavy inspiration from syntax of Golang.
 
 ## Features
