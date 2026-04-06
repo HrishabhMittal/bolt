@@ -216,9 +216,18 @@ class Program {
         // idea
 
         // struct defs is not used again so this should be fine
+        size_t struct_defs_size = struct_defs.size();
         std::swap(code, struct_defs);
         code.insert(code.end(), struct_defs.begin(), struct_defs.end());
 
+        // fix sum offsets, due to putting struct defs first
+        for (auto &pair : patch_function) {
+            for (auto &ref : pair.second) {
+                if (ref.name == "") {
+                    ref.ins += struct_defs_size;
+                }
+            }
+        }
         // global decls alr there
         push_call("main.main");
         code.push_back({bvm::OPCODE::HALT});
