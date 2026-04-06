@@ -1018,11 +1018,12 @@ class ForAST : public StatementAST {
         program.push({bvm::OPCODE::JNC, {}});
         program.new_loop();
         body->codegen(program, push_scope);
+        size_t update_start = program.size();
         update->codegen(program);
         program.push({bvm::OPCODE::JMP, for_start});
         size_t for_end = program.size();
         program[jnc].operands[0] = for_end;
-        program.patch_bc(for_start, for_end);
+        program.patch_bc(update_start, for_end);
         program.end_loop();
         program.delete_scope();
     }
