@@ -1010,7 +1010,7 @@ class ForAST : public StatementAST {
         body->print(indent + 2);
     }
     virtual void codegen(Program &program) override {
-        const bool push_scope = false;
+        const bool push_scope = true;
         program.new_scope();
         init->codegen(program);
         size_t for_start = program.size();
