@@ -1,6 +1,8 @@
-#include "header.hpp"
+#include "lexer.hpp"
+#include <algorithm>
+#include <cctype>
+
 Value valuetype(Token t) {
-    // std::cout<<"calc for: "<<s<<std::endl;
     const std::string &s = t.value;
     if (s.front() == '"')
         return STRING;
@@ -14,19 +16,23 @@ Value valuetype(Token t) {
         return INT;
     }
     t.error("Unrecognised literal: " + s);
+    return INT;
 }
+
 double valueToDouble(const std::string &s) {
     double out = 0.0;
     double divisor = 1.0;
     bool afterDecimal = false;
     bool negative = false;
     size_t i = 0;
+
     if (i < s.length() && s[i] == '-') {
         negative = true;
         i++;
     } else if (i < s.length() && s[i] == '+') {
         i++;
     }
+
     for (; i < s.length(); ++i) {
         char c = s[i];
         if (c == '.') {
@@ -73,148 +79,142 @@ double valueToDouble(const std::string &s) {
 
     return negative ? -result : result;
 }
+
 bool ispresentin(char c, const std::string &s) {
     for (char i : s)
         if (c == i)
             return true;
     return false;
 }
-class Lexer {
-    std::vector<std::string> data;
-    int64_t pos_line = 0;
-    int64_t pos_char = 0;
 
-  public:
-    Lexer() {}
-    Lexer(const std::string &filename) {
-        std::ifstream infile(filename);
-        std::string line;
-        while (std::getline(infile, line)) {
-            data.push_back(line + '\n');
+Lexer::Lexer() {}
+
+Lexer::Lexer(const std::string &filename) {
+    std::ifstream infile(filename);
+    std::string line;
+    while (std::getline(infile, line)) {
+        data.push_back(line + '\n');
+    }
+}
+
+Lexer::checkpoint Lexer::get_checkpoint() { return {pos_line, pos_char}; }
+
+void Lexer::restore(Lexer::checkpoint cp) {
+    pos_line = cp.line;
+    pos_char = cp.char_pos;
+}
+
+Token Lexer::peektoken() {
+    int64_t p_line = pos_line;
+    int64_t p_char = pos_char;
+    Token out = gettoken();
+    pos_line = p_line;
+    pos_char = p_char;
+    return out;
+}
+
+Token Lexer::gettoken() {
+    Token t = __gettoken();
+    if (t.value == "#") {
+        while (t.ttype != TokenType::NEWLINE && t.ttype != TokenType::TK_EOF) {
+            t = __gettoken();
         }
+        return gettoken();
     }
-    struct checkpoint {
-        int64_t line;
-        int64_t char_pos;
-    };
+    return t;
+}
 
-    checkpoint get_checkpoint() { return {pos_line, pos_char}; }
-
-    void restore(checkpoint cp) {
-        pos_line = cp.line;
-        pos_char = cp.char_pos;
-    }
-    Token peektoken() {
-        int64_t p_line = pos_line;
-        int64_t p_char = pos_char;
-        Token out = gettoken();
-        pos_line = p_line;
-        pos_char = p_char;
-        return out;
-    }
-    Token gettoken() {
-        Token t = __gettoken();
-        if (t.value == "#") {
-            while (t.ttype != TokenType::NEWLINE && t.ttype != TokenType::TK_EOF) {
-                t = __gettoken();
-            }
-            return gettoken();
+Token Lexer::__gettoken() {
+    while (pos_line < (int64_t)data.size()) {
+        std::string &line_str = data[pos_line];
+        if (pos_char >= (int64_t)line_str.size()) {
+            pos_line++;
+            pos_char = 0;
+            continue;
         }
-        return t;
-    }
-    Token __gettoken() {
-        while (pos_line < (int64_t)data.size()) {
-            std::string &line_str = data[pos_line];
+        char c = line_str[pos_char++];
+        while (c == ' ' || c == '\t' || c == '\r') {
             if (pos_char >= (int64_t)line_str.size()) {
                 pos_line++;
                 pos_char = 0;
-                continue;
+                if (pos_line >= (int64_t)data.size())
+                    break;
+                line_str = data[pos_line];
             }
-            char c = line_str[pos_char++];
-            while (c == ' ' || c == '\t' || c == '\r') {
-                if (pos_char >= (int64_t)line_str.size()) {
-                    pos_line++;
-                    pos_char = 0;
-                    if (pos_line >= (int64_t)data.size())
-                        break;
-                    line_str = data[pos_line];
-                }
-                c = line_str[pos_char++];
-            }
-            if (c == '\n') {
-                return Token{TokenType::NEWLINE, "\n", pos_line + 1, pos_char - 1, &line_str};
-            }
-            if (pos_line >= (int64_t)data.size()) {
-                break;
-            }
-            int64_t startindex = pos_char - 1;
-            std::string value;
-            if (std::isalpha(c) || c == '_') {
-                value += c;
-                while (pos_char < (int64_t)line_str.size() &&
-                       (std::isalnum(line_str[pos_char]) || line_str[pos_char] == '_')) {
-                    value += line_str[pos_char++];
-                }
-                return findtoken(value, pos_line + 1, startindex, &line_str);
-            }
-            if (std::isdigit(c)) {
-                value += c;
-                bool dot = false;
-                while (pos_char < (int64_t)line_str.size() &&
-                       (std::isdigit(line_str[pos_char]) || (line_str[pos_char] == '.' && !dot))) {
-                    if (line_str[pos_char] == '.')
-                        dot = true;
-                    value += line_str[pos_char++];
-                }
-                if (pos_char < (int64_t)line_str.size() && line_str[pos_char] == 'f')
-                    value += line_str[pos_char++];
-                return findtoken(value, pos_line + 1, startindex, &line_str);
-            }
-            if (c == '"') {
-                value += c;
-                while (pos_char < (int64_t)line_str.size()) {
-                    char ch = line_str[pos_char++];
-                    value += ch;
-                    if (ch == '"')
-                        break;
-                }
-                return findtoken(value, pos_line + 1, startindex, &line_str);
-            }
-            if (ispresentin(c, symbols)) {
-                value += c;
-                while (pos_char < (int64_t)line_str.size() && ispresentin(line_str[pos_char], symbols)) {
-                    value += line_str[pos_char++];
-                }
-                return findtoken(value, pos_line + 1, startindex, &line_str);
-            }
+            c = line_str[pos_char++];
+        }
+        if (c == '\n') {
+            return Token{TokenType::NEWLINE, "\n", pos_line + 1, pos_char - 1, &line_str};
+        }
+        if (pos_line >= (int64_t)data.size()) {
+            break;
+        }
+        int64_t startindex = pos_char - 1;
+        std::string value;
+        if (std::isalpha(c) || c == '_') {
             value += c;
+            while (pos_char < (int64_t)line_str.size() &&
+                   (std::isalnum(line_str[pos_char]) || line_str[pos_char] == '_')) {
+                value += line_str[pos_char++];
+            }
             return findtoken(value, pos_line + 1, startindex, &line_str);
         }
-        return Token{TokenType::TK_EOF, "", pos_line + 1, pos_char, nullptr};
-    }
-
-  private:
-    Token findtoken(const std::string &s, int64_t line, int64_t index, const std::string *line_text) {
-        TokenType ttype;
-        if (s.empty())
-            return {TokenType::TK_EOF, "", line, index, line_text};
-        if (std::isdigit(s[0])) {
-            ttype = TokenType::NUMBER;
-        } else if (std::isalpha(s[0]) || s[0] == '_') {
-            if (std::find(keywords.begin(), keywords.end(), s) != keywords.end()) {
-                ttype = TokenType::KEYWORD;
-            } else {
-                ttype = TokenType::IDENTIFIER;
+        if (std::isdigit(c)) {
+            value += c;
+            bool dot = false;
+            while (pos_char < (int64_t)line_str.size() &&
+                   (std::isdigit(line_str[pos_char]) || (line_str[pos_char] == '.' && !dot))) {
+                if (line_str[pos_char] == '.')
+                    dot = true;
+                value += line_str[pos_char++];
             }
-        } else if (s[0] == '"' && s.back() == '"') {
-            ttype = TokenType::STRING;
-        } else if (ispresentin(s[0], symbols) || ispresentin(s[0], alone)) {
-            ttype = TokenType::PUNCTUATOR;
-        } else if (s == "\n") {
-            ttype = TokenType::NEWLINE;
-        } else {
-            ttype = TokenType::TK_ERR;
+            if (pos_char < (int64_t)line_str.size() && line_str[pos_char] == 'f')
+                value += line_str[pos_char++];
+            return findtoken(value, pos_line + 1, startindex, &line_str);
         }
-        return Token{ttype, s, line, index, line_text};
+        if (c == '"') {
+            value += c;
+            while (pos_char < (int64_t)line_str.size()) {
+                char ch = line_str[pos_char++];
+                value += ch;
+                if (ch == '"')
+                    break;
+            }
+            return findtoken(value, pos_line + 1, startindex, &line_str);
+        }
+        if (ispresentin(c, symbols)) {
+            value += c;
+            while (pos_char < (int64_t)line_str.size() && ispresentin(line_str[pos_char], symbols)) {
+                value += line_str[pos_char++];
+            }
+            return findtoken(value, pos_line + 1, startindex, &line_str);
+        }
+        value += c;
+        return findtoken(value, pos_line + 1, startindex, &line_str);
     }
-};
+    return Token{TokenType::TK_EOF, "", pos_line + 1, pos_char, nullptr};
+}
+
+Token Lexer::findtoken(const std::string &s, int64_t line, int64_t index, const std::string *line_text) {
+    TokenType ttype;
+    if (s.empty())
+        return {TokenType::TK_EOF, "", line, index, line_text};
+    if (std::isdigit(s[0])) {
+        ttype = TokenType::NUMBER;
+    } else if (std::isalpha(s[0]) || s[0] == '_') {
+        if (std::find(keywords.begin(), keywords.end(), s) != keywords.end()) {
+            ttype = TokenType::KEYWORD;
+        } else {
+            ttype = TokenType::IDENTIFIER;
+        }
+    } else if (s[0] == '"' && s.back() == '"') {
+        ttype = TokenType::STRING;
+    } else if (ispresentin(s[0], symbols) || ispresentin(s[0], alone)) {
+        ttype = TokenType::PUNCTUATOR;
+    } else if (s == "\n") {
+        ttype = TokenType::NEWLINE;
+    } else {
+        ttype = TokenType::TK_ERR;
+    }
+    return Token{ttype, s, line, index, line_text};
+}

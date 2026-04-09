@@ -1,4 +1,4 @@
-#include "emitter.cpp"
+#include "emitter.hpp"
 void get_all_bolt_files(std::vector<std::string> &vec, const std::string &dir) {
     const std::string extension = ".bolt";
     if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
@@ -16,16 +16,7 @@ void get_all_bolt_files(std::vector<std::string> &vec, const std::string &dir) {
 int main(int argc, char **argv) {
     if (argc != 3)
         return 1;
-    // this is old now
-    // Lexer l(argv[1]);
-    // Parser p(l);
-    // auto program = p.parseProgram();
-    // // program->print();
-    // Emitter e(std::move(program));
-    // e.emitcode(argv[2]);
-    //
-    //
-    // we use packages like go :)
+
     const std::string src_dir = argv[1];
     const std::string extension = ".bolt";
     const std::string outfile = argv[2];

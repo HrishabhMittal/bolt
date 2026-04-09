@@ -1,7 +1,29 @@
 CXX = g++
-# CXXFLAGS = -std=c++23 -Os --static -flto -march=native
-CXXFLAGS = -std=c++23 -g
-INCLUDES = -Ibvm/include
-all:
-	mkdir -p build
-	$(CXX) $(CXXFLAGS) $(INCLUDES) src/main.cpp -o build/boltc
+CXXFLAGS = -std=c++23 -Ofast -march=native -flto -fuse-ld=mold -MMD -MP
+INCLUDES = -Ibvm/include -Iinclude
+
+SRCDIR = src
+OBJDIR = build/obj
+BINDIR = build
+
+SRCS = $(wildcard $(SRCDIR)/*.cpp)
+OBJS = $(SRCS:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+DEPS = $(OBJS:.o=.d)
+TARGET = $(BINDIR)/boltc
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	@mkdir -p $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
+	@mkdir -p $(OBJDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+-include $(DEPS)
+
+clean:
+	rm -rf build

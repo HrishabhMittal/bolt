@@ -1,7 +1,7 @@
 #!/bin/bash
 echo ------------ MAKING COMPILER -----------------
-make
+make -B -j$(nproc)
 echo ------------ MAKING VM "&" UTILS -------------
 cd bvm
-make -B
+make -B -j$(nproc)
 cd ..

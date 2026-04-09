@@ -24,7 +24,6 @@
 - [ ] add methods to structs
 - [ ] enums (rust-like)
 - [ ] generics
-- [ ] function overloading?
 - [ ] anonymous functions
 - [ ] build stdlib
 - [ ] change syntax
