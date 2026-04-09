@@ -1,4 +1,5 @@
 #include "codegen.hpp"
+#include "header.hpp"
 #include <iostream>
 
 void printSpace(int space) {
@@ -778,6 +779,7 @@ void FunctionAST::print(int indent) {
 }
 
 void FunctionAST::codegen(Program &program) {
+    program.function_return_type = returnType;
     std::string resolved_name = pkg_name + "." + name.value;
     program.push_in_func(resolved_name);
     const bool push_scope = false;
@@ -939,8 +941,16 @@ void ReturnAST::print(int indent) {
 }
 
 void ReturnAST::codegen(Program &program) {
-    if (expr != nullptr)
+    if (expr != nullptr) {
         expr->codegen(program);
+        if (program.function_return_type != expr->evaltype(program)) {
+            error("return type doesnt match the function signature");
+        }
+    } else {
+        if (program.function_return_type != "void") {
+            error("return type doesnt match the function signature");
+        }
+    }
     program.push_undeclare_for_return();
     program.push({bvm::OPCODE::RET, {}});
 }

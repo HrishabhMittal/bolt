@@ -1,6 +1,7 @@
 #pragma once
 #include "lexer.hpp"
 #include "opcode.hpp"
+#include <string>
 
 extern std::vector<std::vector<std::string>> ops_by_precedence;
 extern std::vector<std::vector<std::string>> binops_by_precedence;
@@ -67,10 +68,10 @@ class Program {
     std::vector<bvm::instruction> struct_defs;
     std::vector<std::vector<Identifier>> scope;
     std::map<std::string, Function> funcs;
-
     void precalc_all_offsets();
 
   public:
+    std::string function_return_type;
     Program();
 
     std::map<std::string, uint64_t> struct_full_name_to_program_def;

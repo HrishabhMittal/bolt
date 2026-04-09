@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++23 -Ofast -march=native -flto -fuse-ld=mold -MMD -MP
+CXXFLAGS = -std=c++23 -Ofast -march=native -flto -fuse-ld=mold
 INCLUDES = -Ibvm/include -Iinclude
 
 SRCDIR = src
