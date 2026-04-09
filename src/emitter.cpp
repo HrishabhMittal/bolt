@@ -30,6 +30,12 @@ void Emitter::emitcode(std::string filename) {
                 global_map[extend] = glob;
             } else if (auto struct_def = dynamic_cast<StructDefinitionAST *>(statement.get())) {
                 structs.push_back(struct_def);
+            } else if (auto impl_def = dynamic_cast<ImplAST *>(statement.get())) {
+                for (auto &method : impl_def->methods) {
+                    std::string extend = method->pkg_name + "::" + method->name.value;
+                    program.declare_function({UINT64_MAX, extend, method->proto->type_list(), method->returnType});
+                    functions.push_back(method.get());
+                }
             }
         }
     }

@@ -2,14 +2,6 @@ package main
 import "fmt"
 import "mathlib"
 
-struct Point {
-    x i32,
-    y i32
-}
-struct Rect {
-    topLeft Point,
-    bottomRight Point
-}
 
 function printPoint(p Point) (void) {
     fmt::printstring("Point(")
@@ -84,8 +76,24 @@ function main() (i32) {
         Point { 50, 50 } 
     }
     myRect.topLeft.x = 3
+    myRect.topLeft.y = 3
 
     printPoint(myRect.topLeft)
-
+    myRect.topLeft.some()
+    printPoint(myRect.topLeft)
     return 120
+}
+
+struct Rect {
+    topLeft Point,
+    bottomRight Point
+}
+struct Point {
+    x i32,
+    y i32
+}
+impl Point {
+    function some() (void) {
+        this.x = this.x + this.y
+    }
 }

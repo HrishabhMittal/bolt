@@ -1047,6 +1047,57 @@ void StructInitAST::codegen(Program &program) {
     }
 }
 
+ImplAST::ImplAST(Token n, std::vector<std::unique_ptr<FunctionAST>> m, std::string pkg)
+    : structName(n), methods(std::move(m)), pkg_name(pkg) {}
+
+void ImplAST::print(int indent) {
+    // i really dont want to write one right now
+}
+void ImplAST::codegen(Program &program) {
+    for (auto &method : methods) {
+        method->codegen(program);
+    }
+}
+MethodCallAST::MethodCallAST(std::unique_ptr<ExprAST> obj, std::string m_name, std::vector<std::unique_ptr<ExprAST>> a,
+                             std::string pkg)
+    : object(std::move(obj)), method_name(m_name), args(std::move(a)), pkg_name(pkg) {}
+
+std::vector<std::string> MethodCallAST::get_dependencies() {
+    std::vector<std::string> deps = object->get_dependencies();
+    for (auto &a : args) {
+        auto d = a->get_dependencies();
+        deps.insert(deps.end(), d.begin(), d.end());
+    }
+    return deps;
+}
+
+std::string MethodCallAST::evaltype(Program &program) {
+    std::string struct_type = object->evaltype(program);
+    std::string func_target = struct_type + ":" + method_name;
+    Function func = program.get_function(func_target, pkg_name);
+    return func.ret_type;
+}
+void MethodCallAST::print(int indent) {
+
+}
+
+void MethodCallAST::codegen(Program &program) {
+    std::string struct_type = object->evaltype(program);
+    std::string func_target = struct_type + ":" + method_name;
+    Function resolved_func = program.get_function(func_target, pkg_name);
+    if (resolved_func.argtypes.size() != args.size() + 1) {
+        error("Incorrect argument count for method " + method_name);
+    }
+    object->codegen(program);
+    for (size_t i = 0; i < args.size(); i++) {
+        if (args[i]->evaltype(program) != resolved_func.argtypes[i + 1]) {
+            error("Argument type mismatch in method call.");
+        }
+        args[i]->codegen(program);
+    }
+    program.push_call(resolved_func.name);
+}
+
 void ProgramAST::definePackage(std::unique_ptr<PackageAST> pk) { package = pk->package_name; }
 
 void ProgramAST::addStatement(std::unique_ptr<GlobalStatementAST> stmt) { statements.push_back(std::move(stmt)); }

@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include "header.hpp"
 
 Parser::Parser() {}
 
@@ -170,7 +171,22 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
             } else if (match(TokenType::PUNCTUATOR, ".")) {
                 expect(TokenType::PUNCTUATOR, ".");
                 Token field = expect(TokenType::IDENTIFIER);
-                expr = std::make_unique<StructAccessAST>(std::move(expr), field.value);
+                if (match(TokenType::PUNCTUATOR, "(")) {
+                    next();
+                    std::vector<std::unique_ptr<ExprAST>> args;
+                    if (!match(TokenType::PUNCTUATOR, ")")) {
+                        while (true) {
+                            args.push_back(parseExpr());
+                            if (!match(TokenType::PUNCTUATOR, ","))
+                                break;
+                            expect(TokenType::PUNCTUATOR, ",");
+                        }
+                    }
+                    expect(TokenType::PUNCTUATOR, ")");
+                    expr = std::make_unique<MethodCallAST>(std::move(expr), field.value, std::move(args), pkg);
+                } else {
+                    expr = std::make_unique<StructAccessAST>(std::move(expr), field.value);
+                }
             }
         }
         return expr;
@@ -327,13 +343,17 @@ std::unique_ptr<GlobalStatementAST> Parser::parseStructDefinition() {
 std::unique_ptr<ExprAST> Parser::parseLvalue() {
     Token id = expect(TokenType::IDENTIFIER);
 
+    std::string pkg = current_package;
+    std::string base_name = id.value;
+
     if (match(TokenType::PUNCTUATOR, "::") && current_imports.count(id.value)) {
         next();
         Token next_id = expect(TokenType::IDENTIFIER);
-        id.value = current_imports[id.value] + "::" + next_id.value;
+        base_name = current_imports[id.value] + "::" + next_id.value;
+        pkg = current_imports[id.value];
     }
-
-    std::unique_ptr<ExprAST> lhs = std::make_unique<IdentifierExprAST>(id, current_package);
+    id.value = base_name;
+    std::unique_ptr<ExprAST> lhs = std::make_unique<IdentifierExprAST>(id, pkg);
 
     while (match(TokenType::PUNCTUATOR, "[") || match(TokenType::PUNCTUATOR, ".")) {
         if (match(TokenType::PUNCTUATOR, "[")) {
@@ -344,7 +364,22 @@ std::unique_ptr<ExprAST> Parser::parseLvalue() {
         } else if (match(TokenType::PUNCTUATOR, ".")) {
             expect(TokenType::PUNCTUATOR, ".");
             Token field = expect(TokenType::IDENTIFIER);
-            lhs = std::make_unique<StructAccessAST>(std::move(lhs), field.value);
+            if (match(TokenType::PUNCTUATOR, "(")) {
+                next();
+                std::vector<std::unique_ptr<ExprAST>> args;
+                if (!match(TokenType::PUNCTUATOR, ")")) {
+                    while (true) {
+                        args.push_back(parseExpr());
+                        if (!match(TokenType::PUNCTUATOR, ","))
+                            break;
+                        expect(TokenType::PUNCTUATOR, ",");
+                    }
+                }
+                expect(TokenType::PUNCTUATOR, ")");
+                lhs = std::make_unique<MethodCallAST>(std::move(lhs), field.value, std::move(args), pkg);
+            } else {
+                lhs = std::make_unique<StructAccessAST>(std::move(lhs), field.value);
+            }
         }
     }
     return lhs;
@@ -355,6 +390,8 @@ std::unique_ptr<GlobalStatementAST> Parser::parseGlobalStatement() {
         return parseStructDefinition();
     if (match(TokenType::KEYWORD, "function"))
         return parseFunction();
+    if (match(TokenType::KEYWORD, "impl"))
+        return parseImpl();
     if (match(TokenType::KEYWORD, "extern"))
         return parseExternFunction();
     if (match(TokenType::IDENTIFIER) && matchnext(TokenType::PUNCTUATOR, ":="))
@@ -393,7 +430,47 @@ std::unique_ptr<StatementAST> Parser::parseDeclarationAssignmentOrExpr(bool For,
         return std::make_unique<JustExprAST>(std::move(lhs));
     }
 }
+std::unique_ptr<GlobalStatementAST> Parser::parseImpl() {
+    expect(TokenType::KEYWORD, "impl");
+    Token structName = expect(TokenType::IDENTIFIER);
+    expect(TokenType::PUNCTUATOR, "{");
 
+    std::vector<std::unique_ptr<FunctionAST>> methods;
+
+    while (!match(TokenType::PUNCTUATOR, "}")) {
+        if (match(TokenType::NEWLINE)) {
+            next();
+            continue;
+        }
+
+        expect(TokenType::KEYWORD, "function");
+        Token methodName = expect(TokenType::IDENTIFIER);
+
+        // simple fix, i dont want to confuse this with :: for packages
+        methodName.value = structName.value + ":" + methodName.value;
+
+        expect(TokenType::PUNCTUATOR, "(");
+        auto proto = parsePrototype();
+        proto->args.insert(proto->args.begin(), {current_package + "::" + structName.value,
+                                                 Token{TokenType::IDENTIFIER, "this", 0, 0, nullptr}});
+
+        expect(TokenType::PUNCTUATOR, ")");
+        expect(TokenType::PUNCTUATOR, "(");
+        std::string returnType = parseTypeName();
+        expect(TokenType::PUNCTUATOR, ")");
+
+        insideFunction++;
+        auto body = parseBlock();
+        insideFunction--;
+
+        methods.push_back(
+            std::make_unique<FunctionAST>(methodName, std::move(proto), returnType, std::move(body), current_package));
+    }
+    expect(TokenType::PUNCTUATOR, "}");
+    expect(TokenType::NEWLINE);
+
+    return std::make_unique<ImplAST>(structName, std::move(methods), current_package);
+}
 std::unique_ptr<StatementAST> Parser::parseStatement() {
     if (match(TokenType::PUNCTUATOR, "{"))
         return parseBlock();

@@ -5,7 +5,7 @@
 std::string alone = "(){}[];,.";
 std::string symbols = "~!@#$%^&*_+-=`|\\':\"<>?/";
 std::vector<std::string> keywords = {
-    "if", "else", "while", "break", "continue", "for", "struct",
+    "if", "else", "while", "break", "continue", "for", "struct", "impl",
     "return", "extern", "function", "import", "package", "as", "void",
     "bool", "string", "true", "false", "u8", "u16", "u32",
     "u64", "i8", "i16", "i32", "i64", "f32", "f64"

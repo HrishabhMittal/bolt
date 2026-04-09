@@ -122,6 +122,19 @@ class CallExprAST : public ExprAST {
     virtual void codegen(Program &program) override;
 };
 
+class MethodCallAST : public ExprAST {
+  public:
+    std::unique_ptr<ExprAST> object;
+    std::string method_name;
+    std::vector<std::unique_ptr<ExprAST>> args;
+    std::string pkg_name;
+
+    MethodCallAST(std::unique_ptr<ExprAST> obj, std::string m_name, std::vector<std::unique_ptr<ExprAST>> a,std::string pkg);
+    void print(int indent = 0) override;
+    std::vector<std::string> get_dependencies() override;
+    std::string evaltype(Program &program) override;
+    void codegen(Program &program) override;
+};
 class ArrayIndexedAST : public ExprAST {
   public:
     std::unique_ptr<ExprAST> array;
@@ -243,6 +256,15 @@ class FunctionAST : public GlobalStatementAST {
     virtual void codegen(Program &program) override;
 };
 
+class ImplAST : public GlobalStatementAST {
+  public:
+    Token structName;
+    std::vector<std::unique_ptr<FunctionAST>> methods;
+    std::string pkg_name;
+    ImplAST(Token n, std::vector<std::unique_ptr<FunctionAST>> m, std::string pkg);
+    void print(int indent = 0) override;
+    void codegen(Program &program) override;
+};
 class ConditionalAST : public StatementAST {
   public:
     std::unique_ptr<ExprAST> ifCondition;
@@ -328,7 +350,6 @@ class StructInitAST : public ExprAST {
     virtual std::string evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
-
 class ProgramAST : public AST {
   public:
     std::string package;

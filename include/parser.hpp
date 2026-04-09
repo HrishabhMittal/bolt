@@ -46,6 +46,7 @@ class Parser {
     std::unique_ptr<StatementAST> parseFor();
     std::unique_ptr<PackageAST> parsePackage();
     std::unique_ptr<ImportAST> parseImport();
+    std::unique_ptr<GlobalStatementAST> parseImpl();
 
   public:
     Parser();

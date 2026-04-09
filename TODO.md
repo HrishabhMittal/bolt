@@ -21,7 +21,7 @@
 - [X] add `print()` to actually print stuff
 - [X] add arrays
 - [X] structs 
-- [ ] add methods to structs
+- [X] add methods to structs
 - [ ] enums (rust-like)
 - [ ] generics
 - [ ] anonymous functions
