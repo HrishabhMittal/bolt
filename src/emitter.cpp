@@ -18,14 +18,14 @@ void Emitter::emitcode(std::string filename) {
     for (auto &prog : progs) {
         for (auto &statement : prog->statements) {
             if (auto func = dynamic_cast<FunctionAST *>(statement.get())) {
-                std::string extend = func->pkg_name + "." + func->name.value;
+                std::string extend = func->pkg_name + "::" + func->name.value;
                 program.declare_function({UINT64_MAX, extend, func->proto->type_list(), func->returnType});
                 functions.push_back(func);
             } else if (auto ext = dynamic_cast<ExternFunctionAST *>(statement.get())) {
-                std::string extend = ext->pkg_name + "." + ext->name.value;
+                std::string extend = ext->pkg_name + "::" + ext->name.value;
                 program.declare_function({UINT64_MAX, extend, ext->proto->type_list(), ext->returnType, true});
             } else if (auto glob = dynamic_cast<GlobalDeclarationAST *>(statement.get())) {
-                std::string extend = glob->pkg_name + "." + glob->identifier.value;
+                std::string extend = glob->pkg_name + "::" + glob->identifier.value;
                 globals.push_back(glob);
                 global_map[extend] = glob;
             } else if (auto struct_def = dynamic_cast<StructDefinitionAST *>(statement.get())) {
@@ -60,7 +60,7 @@ void Emitter::emitcode(std::string filename) {
         s->codegen(program);
     }
     for (auto &g : globals) {
-        std::string extended_name = g->pkg_name + "." + g->identifier.value;
+        std::string extended_name = g->pkg_name + "::" + g->identifier.value;
         if (state[extended_name] == 0) {
             doofus(extended_name);
         }

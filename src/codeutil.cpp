@@ -170,7 +170,7 @@ bvm::program Program::construct_full_code() {
         }
     }
 
-    push_call("main.main");
+    push_call("main::main");
     code.push_back({bvm::OPCODE::HALT});
     precalc_all_offsets();
 
@@ -302,8 +302,8 @@ void Program::declare_function(Function i) {
 Function Program::get_function(std::string name, std::string pkg_name) {
     if (funcs.count(name))
         return funcs[name];
-    if (name.find('.') == std::string::npos && funcs.count(pkg_name + "." + name)) {
-        return funcs[pkg_name + "." + name];
+    if (name.find("::") == std::string::npos && funcs.count(pkg_name + "::" + name)) {
+        return funcs[pkg_name + "::" + name];
     }
     error("no declaration found for function " + name);
 }
@@ -329,7 +329,7 @@ int64_t Program::getaddress(std::string iden, std::string pkg_name) {
                 else
                     return top;
             }
-            if (i == 0 && iden.find('.') == std::string::npos && scope[i][j].name == pkg_name + "." + iden) {
+            if (i == 0 && iden.find("::") == std::string::npos && scope[i][j].name == pkg_name + "::" + iden) {
                 return j;
             }
         }
@@ -342,7 +342,7 @@ std::string Program::gettype(std::string iden, std::string pkg_name) {
         for (size_t j = 0; j < scope[i].size(); j++) {
             if (scope[i][j].name == iden)
                 return scope[i][j].type;
-            if (i == 0 && iden.find('.') == std::string::npos && scope[i][j].name == pkg_name + "." + iden) {
+            if (i == 0 && iden.find("::") == std::string::npos && scope[i][j].name == pkg_name + "::" + iden) {
                 return scope[i][j].type;
             }
         }

@@ -60,16 +60,16 @@ std::string Parser::parseTypeName() {
         return expect(TokenType::KEYWORD).value;
     } else if (match(TokenType::IDENTIFIER)) {
         Token id = expect(TokenType::IDENTIFIER);
-        if (match(TokenType::PUNCTUATOR, ".")) {
+        if (match(TokenType::PUNCTUATOR, "::")) {
             next();
             Token struct_name = expect(TokenType::IDENTIFIER);
             std::string pkg = id.value;
             if (current_imports.count(id.value)) {
                 pkg = current_imports[id.value];
             }
-            return pkg + "." + struct_name.value;
+            return pkg + "::" + struct_name.value;
         }
-        return current_package + "." + id.value;
+        return current_package + "::" + id.value;
     } else if (match(TokenType::PUNCTUATOR, "[")) {
         expect(TokenType::PUNCTUATOR, "[");
         expect(TokenType::PUNCTUATOR, "]");
@@ -115,10 +115,10 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
         std::string base_name = id.value;
         std::string pkg = current_package;
 
-        if (match(TokenType::PUNCTUATOR, ".") && current_imports.count(id.value)) {
+        if (match(TokenType::PUNCTUATOR, "::") && current_imports.count(id.value)) {
             next();
             Token next_id = expect(TokenType::IDENTIFIER);
-            base_name = current_imports[id.value] + "." + next_id.value;
+            base_name = current_imports[id.value] + "::" + next_id.value;
             pkg = current_imports[id.value];
         }
 
@@ -136,8 +136,8 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
             expect(TokenType::PUNCTUATOR, "}");
 
             std::string struct_type = base_name;
-            if (struct_type.find('.') == std::string::npos)
-                struct_type = current_package + "." + struct_type;
+            if (struct_type.find("::") == std::string::npos)
+                struct_type = current_package + "::" + struct_type;
 
             return std::make_unique<StructInitAST>(struct_type, std::move(args));
         }
@@ -155,11 +155,11 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
             }
             expect(TokenType::PUNCTUATOR, ")");
             id.value = base_name;
-            return std::make_unique<CallExprAST>(id, std::move(args), current_package);
+            return std::make_unique<CallExprAST>(id, std::move(args), pkg);
         }
 
         id.value = base_name;
-        std::unique_ptr<ExprAST> expr = std::make_unique<IdentifierExprAST>(id, current_package);
+        std::unique_ptr<ExprAST> expr = std::make_unique<IdentifierExprAST>(id, pkg);
 
         while (match(TokenType::PUNCTUATOR, "[") || match(TokenType::PUNCTUATOR, ".")) {
             if (match(TokenType::PUNCTUATOR, "[")) {
@@ -327,10 +327,10 @@ std::unique_ptr<GlobalStatementAST> Parser::parseStructDefinition() {
 std::unique_ptr<ExprAST> Parser::parseLvalue() {
     Token id = expect(TokenType::IDENTIFIER);
 
-    if (match(TokenType::PUNCTUATOR, ".") && current_imports.count(id.value)) {
+    if (match(TokenType::PUNCTUATOR, "::") && current_imports.count(id.value)) {
         next();
         Token next_id = expect(TokenType::IDENTIFIER);
-        id.value = current_imports[id.value] + "." + next_id.value;
+        id.value = current_imports[id.value] + "::" + next_id.value;
     }
 
     std::unique_ptr<ExprAST> lhs = std::make_unique<IdentifierExprAST>(id, current_package);

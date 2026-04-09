@@ -12,19 +12,19 @@ struct Rect {
 }
 
 function printPoint(p Point) (void) {
-    fmt.printstring("Point(")
-    fmt.printi32(p.x)
-    fmt.printstring(", ")
-    fmt.printi32(p.y)
-    fmt.printstring(")\n")
+    fmt::printstring("Point(")
+    fmt::printi32(p.x)
+    fmt::printstring(", ")
+    fmt::printi32(p.y)
+    fmt::printstring(")\n")
 }
 function printArray(arr []i32,len i32) (void) {
-    fmt.printstring("[")
+    fmt::printstring("[")
     for i:=0;i<len;i=i+1 {
-        fmt.printi32(arr[i])
-        fmt.printstring(", ")
+        fmt::printi32(arr[i])
+        fmt::printstring(", ")
     }
-    fmt.printstring("]\n")
+    fmt::printstring("]\n")
 }
 
 function someBC() (void) {
@@ -35,24 +35,24 @@ function someBC() (void) {
         }
         i=i+1
     }
-    fmt.printi32(i)
-    fmt.printstring("\n")
+    fmt::printi32(i)
+    fmt::printstring("\n")
     for i:=0;i<10;i=i+1 {
         if i>3 {
             break
         }
-        fmt.printi32(i)
-        fmt.printstring("\n")
+        fmt::printi32(i)
+        fmt::printstring("\n")
     }
 }
 
 
 function main() (i32) {
-    # fmt.printi32(mathlib.fibonacci(5))
-    # fmt.printstring("\n")
+    # fmt::printi32(mathlib::fibonacci(5))
+    # fmt::printstring("\n")
 
-    # fmt.printi32(mathlib.factorial(5))
-    # fmt.printstring("\n")
+    # fmt::printi32(mathlib::factorial(5))
+    # fmt::printstring("\n")
 
     # arr := []i32{0,1,2,3,4,5,6}
     # printArray(arr,7)
@@ -61,13 +61,13 @@ function main() (i32) {
 
     # arr2 := [][]i32{[]i32{1,2},[]i32{2,3}}
     # 
-    # fmt.printi32(arr2[0][0])
-    # fmt.printstring("\n")
+    # fmt::printi32(arr2[0][0])
+    # fmt::printstring("\n")
 
     # arr2[0][0]=3
 
-    # fmt.printi32(arr2[0][0])
-    # fmt.printstring("\n")
+    # fmt::printi32(arr2[0][0])
+    # fmt::printstring("\n")
 
 
     someBC()

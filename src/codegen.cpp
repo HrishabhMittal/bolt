@@ -399,9 +399,9 @@ void IdentifierExprAST::codegen(Program &program) {
 }
 
 std::vector<std::string> IdentifierExprAST::get_dependencies() {
-    if (identifier.value.find('.') != std::string::npos)
+    if (identifier.value.find("::") != std::string::npos)
         return {identifier.value};
-    return {pkg_name + "." + identifier.value};
+    return {pkg_name + "::" + identifier.value};
 }
 
 CallExprAST::CallExprAST(Token c, std::vector<std::unique_ptr<ExprAST>> a, std::string pkg)
@@ -559,7 +559,7 @@ void StructDefinitionAST::print(int indent) {
 }
 
 void StructDefinitionAST::codegen(Program &program) {
-    std::string resolved_name = pkg_name + "." + name.value;
+    std::string resolved_name = pkg_name + "::" + name.value;
     program.declare_struct(resolved_name, fields);
 }
 
@@ -758,7 +758,7 @@ void ExternFunctionAST::print(int indent) {
 }
 
 void ExternFunctionAST::codegen(Program &program) {
-    std::string resolved_name = pkg_name + "." + name.value;
+    std::string resolved_name = pkg_name + "::" + name.value;
     program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType, true});
 }
 
@@ -780,7 +780,7 @@ void FunctionAST::print(int indent) {
 
 void FunctionAST::codegen(Program &program) {
     program.function_return_type = returnType;
-    std::string resolved_name = pkg_name + "." + name.value;
+    std::string resolved_name = pkg_name + "::" + name.value;
     program.push_in_func(resolved_name);
     const bool push_scope = false;
 
