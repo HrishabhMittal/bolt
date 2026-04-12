@@ -31,12 +31,13 @@ class Parser {
     std::unique_ptr<ExprAST> parseExpr(int exprPrec = 0, bool allowStructInit = true);
     std::unique_ptr<BlockAST> parseBlock();
     std::unique_ptr<GlobalStatementAST> parseExternFunction();
-    std::unique_ptr<GlobalStatementAST> parseGlobalDeclaration();
+    std::unique_ptr<GlobalStatementAST> parseGlobalDeclaration(bool is_const = false);
     std::unique_ptr<GlobalStatementAST> parseStructDefinition();
     std::unique_ptr<ExprAST> parseLvalue();
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement();
     std::unique_ptr<StatementAST> parseJustExpr(bool For = false);
-    std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false, bool allowStructInit = true);
+    std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false, bool allowStructInit = true,
+                                                                   bool is_const = true);
     std::unique_ptr<StatementAST> parseStatement();
     std::unique_ptr<PrototypeAST> parsePrototype();
     std::unique_ptr<FunctionAST> parseFunction();

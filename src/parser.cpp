@@ -304,14 +304,14 @@ std::unique_ptr<GlobalStatementAST> Parser::parseExternFunction() {
     return std::make_unique<ExternFunctionAST>(name, std::move(proto), returnType, current_package);
 }
 
-std::unique_ptr<GlobalStatementAST> Parser::parseGlobalDeclaration() {
+std::unique_ptr<GlobalStatementAST> Parser::parseGlobalDeclaration(bool is_const) {
     Token id = currentToken;
     next();
     if (match(TokenType::PUNCTUATOR, ":=")) {
         next();
         auto expr = parseExpr();
         expect(TokenType::NEWLINE);
-        return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package);
+        return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package, is_const);
     }
     currentToken.error("Unknown global declaration statement");
 }
@@ -394,6 +394,10 @@ std::unique_ptr<GlobalStatementAST> Parser::parseGlobalStatement() {
         return parseImpl();
     if (match(TokenType::KEYWORD, "extern"))
         return parseExternFunction();
+    if (match(TokenType::KEYWORD, "const")) {
+        expect(TokenType::KEYWORD);
+        return parseGlobalDeclaration(true);
+    }
     if (match(TokenType::IDENTIFIER) && matchnext(TokenType::PUNCTUATOR, ":="))
         return parseGlobalDeclaration();
     currentToken.error("Unknown global statement");
@@ -406,7 +410,7 @@ std::unique_ptr<StatementAST> Parser::parseJustExpr(bool For) {
     return std::make_unique<JustExprAST>(std::move(x));
 }
 
-std::unique_ptr<StatementAST> Parser::parseDeclarationAssignmentOrExpr(bool For, bool allowStructInit) {
+std::unique_ptr<StatementAST> Parser::parseDeclarationAssignmentOrExpr(bool For, bool allowStructInit, bool is_const) {
     auto lhs = parseExpr(0, allowStructInit);
     if (match(TokenType::PUNCTUATOR, ":=")) {
         next();
@@ -414,7 +418,7 @@ std::unique_ptr<StatementAST> Parser::parseDeclarationAssignmentOrExpr(bool For,
         if (!For)
             expect(TokenType::NEWLINE);
         if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
-            return std::make_unique<DeclarationAST>(idNode->identifier, std::move(rhs), idNode->pkg_name);
+            return std::make_unique<DeclarationAST>(idNode->identifier, std::move(rhs), idNode->pkg_name, is_const);
         } else {
             error("Invalid left-hand side for declaration.");
         }
@@ -484,6 +488,10 @@ std::unique_ptr<StatementAST> Parser::parseStatement() {
         return parseReturn();
     if (insideLoop && (match(TokenType::KEYWORD, "break") || match(TokenType::KEYWORD, "continue")))
         return parseBreakContinue();
+    if (match(TokenType::KEYWORD, "const")) {
+        expect(TokenType::KEYWORD);
+        return parseDeclarationAssignmentOrExpr(true);
+    }
     return parseDeclarationAssignmentOrExpr();
 }
 

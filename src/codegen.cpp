@@ -592,8 +592,8 @@ void StructAccessAST::codegen(Program &program) {
     program.push({load_type(type_size, type_is_unsigned(type)), {}});
 }
 
-GlobalDeclarationAST::GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
-    : identifier(id), pkg_name(pkg), expr(std::move(e)) {}
+GlobalDeclarationAST::GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
+    : identifier(id), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
 
 void GlobalDeclarationAST::print(int indent) {
     printSpace(indent);
@@ -606,14 +606,14 @@ void GlobalDeclarationAST::print(int indent) {
 
 void GlobalDeclarationAST::codegen(Program &program) {
     std::string type = expr->evaltype(program);
-    Identifier i = {identifier.value, type};
+    Identifier i = {identifier.value, type, is_const};
     expr->codegen(program);
     program.declare(i);
     program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
 }
 
-DeclarationAST::DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg)
-    : identifier(id), pkg_name(pkg), expr(std::move(e)) {}
+DeclarationAST::DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
+    : identifier(id), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
 
 void DeclarationAST::print(int indent) {
     printSpace(indent);
@@ -626,7 +626,7 @@ void DeclarationAST::print(int indent) {
 
 void DeclarationAST::codegen(Program &program) {
     std::string type = expr->evaltype(program);
-    Identifier i = {identifier.value, type};
+    Identifier i = {identifier.value, type, is_const};
     expr->codegen(program);
     program.declare(i);
     program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
@@ -650,6 +650,10 @@ void AssignmentAST::print(int indent) {
 void AssignmentAST::codegen(Program &program) {
     std::string expr_type = expr->evaltype(program);
     if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
+        bool is_iden_const = program.isconst(idNode->identifier.value, idNode->pkg_name);
+        if (is_iden_const) {
+            error("attempt to assign to constant value " + idNode->identifier.value + " failed.");
+        }
         std::string iden_type = program.gettype(idNode->identifier.value, idNode->pkg_name);
         if (expr_type != iden_type) {
             error("attempt to assign " + expr_type + " to " + idNode->identifier.value + " of type " + iden_type +
@@ -1077,9 +1081,7 @@ std::string MethodCallAST::evaltype(Program &program) {
     Function func = program.get_function(func_target, pkg_name);
     return func.ret_type;
 }
-void MethodCallAST::print(int indent) {
-
-}
+void MethodCallAST::print(int indent) {}
 
 void MethodCallAST::codegen(Program &program) {
     std::string struct_type = object->evaltype(program);

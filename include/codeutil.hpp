@@ -16,6 +16,7 @@ bvm::OPCODE store_type(int size);
 struct Identifier {
     std::string name;
     std::string type;
+    bool is_const;
 };
 
 struct Function {
@@ -108,6 +109,7 @@ class Program {
     Function get_function(std::string name, std::string pkg_name);
 
     void declare(Identifier i);
+    bool isconst(std::string iden, std::string pkg_name);
     int64_t getaddress(std::string iden, std::string pkg_name);
     std::string gettype(std::string iden, std::string pkg_name);
 };

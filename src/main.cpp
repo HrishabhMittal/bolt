@@ -1,4 +1,5 @@
 #include "emitter.hpp"
+#include <stdexcept>
 void get_all_bolt_files(std::vector<std::string> &vec, const std::string &dir) {
     const std::string extension = ".bolt";
     if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
@@ -29,6 +30,11 @@ int main(int argc, char **argv) {
     }
     for (auto &i : paths)
         e.add_file(i);
-    e.emitcode(outfile);
+    try {
+        e.emitcode(outfile);
+    } catch (const std::runtime_error &e) {
+        std::cerr<<"codegeneration couldn't be completed."<<std::endl;
+        return 1;
+    }
     return 0;
 }

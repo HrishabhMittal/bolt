@@ -129,7 +129,8 @@ class MethodCallAST : public ExprAST {
     std::vector<std::unique_ptr<ExprAST>> args;
     std::string pkg_name;
 
-    MethodCallAST(std::unique_ptr<ExprAST> obj, std::string m_name, std::vector<std::unique_ptr<ExprAST>> a,std::string pkg);
+    MethodCallAST(std::unique_ptr<ExprAST> obj, std::string m_name, std::vector<std::unique_ptr<ExprAST>> a,
+                  std::string pkg);
     void print(int indent = 0) override;
     std::vector<std::string> get_dependencies() override;
     std::string evaltype(Program &program) override;
@@ -184,9 +185,10 @@ class StructAccessAST : public ExprAST {
 class GlobalDeclarationAST : public GlobalStatementAST {
   public:
     Token identifier;
+    bool is_const;
     std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg);
+    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const = false);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };
@@ -194,9 +196,10 @@ class GlobalDeclarationAST : public GlobalStatementAST {
 class DeclarationAST : public StatementAST {
   public:
     Token identifier;
+    bool is_const;
     std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg);
+    DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const = false);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };

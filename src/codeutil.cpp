@@ -337,6 +337,18 @@ int64_t Program::getaddress(std::string iden, std::string pkg_name) {
     error("identifier " + iden + " doesn't exist.");
 }
 
+bool Program::isconst(std::string iden, std::string pkg_name) {
+    for (ssize_t i = static_cast<int64_t>(scope.size()) - 1; i >= 0; i--) {
+        for (size_t j = 0; j < scope[i].size(); j++) {
+            if (scope[i][j].name == iden)
+                return scope[i][j].is_const;
+            if (i == 0 && iden.find("::") == std::string::npos && scope[i][j].name == pkg_name + "::" + iden) {
+                return scope[i][j].is_const;
+            }
+        }
+    }
+    error("identifier " + iden + " doesn't exist.");
+}
 std::string Program::gettype(std::string iden, std::string pkg_name) {
     for (ssize_t i = static_cast<int64_t>(scope.size()) - 1; i >= 0; i--) {
         for (size_t j = 0; j < scope[i].size(); j++) {
