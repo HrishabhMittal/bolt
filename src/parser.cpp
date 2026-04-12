@@ -195,7 +195,8 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
 }
 
 std::unique_ptr<ExprAST> Parser::parseTerm(bool allowStructInit) {
-    if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!") || match(TokenType::PUNCTUATOR, "+")) {
+    if (match(TokenType::PUNCTUATOR, "-") || match(TokenType::PUNCTUATOR, "!") || match(TokenType::PUNCTUATOR, "+") ||
+        match(TokenType::PUNCTUATOR, "~")) {
         Token op = currentToken;
         next();
         auto operand = parseTerm(allowStructInit);

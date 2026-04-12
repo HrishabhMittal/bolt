@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "header.hpp"
+#include "opcode.hpp"
 #include <iostream>
 
 void printSpace(int space) {
@@ -135,6 +136,9 @@ std::string BinaryExprAST::evaltype(Program &program) {
         op.value == ">=") {
         return "bool";
     }
+    if (ltype == "bool" && (op.value == "&&" || op.value == "||")) {
+        return "bool";
+    }
     if (op.value == "%") {
         if (ltype != "i32" && ltype != "i64") {
             error("Type error: Modulo operator '%' not supported for type \"" + ltype + "\"");
@@ -142,6 +146,9 @@ std::string BinaryExprAST::evaltype(Program &program) {
         return ltype;
     }
     if (op.value == "+" || op.value == "-" || op.value == "*" || op.value == "/") {
+        return ltype;
+    }
+    if (op.value == "^" || op.value == "&" || op.value == "|") {
         return ltype;
     }
     error("Type error: Unsupported binary operator \"" + op.value + "\"");
@@ -156,7 +163,50 @@ void BinaryExprAST::codegen(Program &program) {
         error("operation on \"" + retval1 + "\" and \"" + retval2 + "\" is not supported");
     }
     std::string t = retval1;
-    if (op.value == "+") {
+    if (op.value == "&&" && retval1 == "bool") {
+        program.push({bvm::OPCODE::I32_AND, {}});
+    } else if (op.value == "||" && retval1 == "bool") {
+        program.push({bvm::OPCODE::I32_OR, {}});
+    } else if (op.value == "&") {
+        if (t == "i32" || t == "i64")
+            program.push({bvm::OPCODE::I32_AND, {}});
+        else if (t == "i64" || t == "u64")
+            program.push({bvm::OPCODE::I64_AND, {}});
+        else
+            error("& operator on unsupported type: " + retval1);
+    } else if (op.value == "|") {
+        if (t == "i32" || t == "i64")
+            program.push({bvm::OPCODE::I32_OR, {}});
+        else if (t == "i64" || t == "u64")
+            program.push({bvm::OPCODE::I64_OR, {}});
+        else
+            error("| operator on unsupported type: " + retval1);
+    } else if (op.value == "^") {
+        if (t == "i32" || t == "i64")
+            program.push({bvm::OPCODE::I32_XOR, {}});
+        else if (t == "i64" || t == "u64")
+            program.push({bvm::OPCODE::I64_XOR, {}});
+        else
+            error("^ operator on unsupported type: " + retval1);
+    } else if (op.value == "<<") {
+        if (t == "i32" || t == "i64")
+            program.push({bvm::OPCODE::I32_SHL, {}});
+        else if (t == "i64" || t == "u64")
+            program.push({bvm::OPCODE::I64_SHL, {}});
+        else
+            error("<< operator on unsupported type: " + retval1);
+    } else if (op.value == ">>") {
+        if (t == "u32")
+            program.push({bvm::OPCODE::U32_SHR, {}});
+        else if (t == "i32")
+            program.push({bvm::OPCODE::I32_SHR, {}});
+        else if (t == "i64")
+            program.push({bvm::OPCODE::I64_SHR, {}});
+        else if (t == "u64")
+            program.push({bvm::OPCODE::U64_SHR, {}});
+        else
+            error(">> operator on unsupported type: " + retval1);
+    } else if (op.value == "+") {
         if (t == "i32")
             program.push({bvm::OPCODE::I32_ADD, {}});
         else if (t == "i64")
@@ -212,31 +262,31 @@ void BinaryExprAST::codegen(Program &program) {
         else
             error("Modulo operator not supported for floating points");
         return;
-    }
+    } else if (op.value == "==" || op.value == "!=" || op.value == "<" || op.value == ">" || op.value == ">=" ||
+               op.value == "<=") {
+        if (t == "f32")
+            program.push({bvm::OPCODE::F32_CMP, {}});
+        else if (t == "f64")
+            program.push({bvm::OPCODE::F64_CMP, {}});
+        else if (t == "i32")
+            program.push({bvm::OPCODE::I32_CMP, {}});
+        else
+            program.push({bvm::OPCODE::I64_CMP, {}});
 
-    if (t == "f32")
-        program.push({bvm::OPCODE::F32_CMP, {}});
-    else if (t == "f64")
-        program.push({bvm::OPCODE::F64_CMP, {}});
-    else if (t == "i32")
-        program.push({bvm::OPCODE::I32_CMP, {}});
-    else
-        program.push({bvm::OPCODE::I64_CMP, {}});
-
-    if (op.value == "==")
-        program.push({bvm::OPCODE::PE, {}});
-    else if (op.value == "!=")
-        program.push({bvm::OPCODE::PNE, {}});
-    else if (op.value == "<")
-        program.push({bvm::OPCODE::PLT, {}});
-    else if (op.value == ">")
-        program.push({bvm::OPCODE::PGT, {}});
-    else if (op.value == "<=")
-        program.push({bvm::OPCODE::PLE, {}});
-    else if (op.value == ">=")
-        program.push({bvm::OPCODE::PGE, {}});
-    else
-        error("Unsupported binary operator: " + op.value);
+        if (op.value == "==")
+            program.push({bvm::OPCODE::PE, {}});
+        else if (op.value == "!=")
+            program.push({bvm::OPCODE::PNE, {}});
+        else if (op.value == "<")
+            program.push({bvm::OPCODE::PLT, {}});
+        else if (op.value == ">")
+            program.push({bvm::OPCODE::PGT, {}});
+        else if (op.value == "<=")
+            program.push({bvm::OPCODE::PLE, {}});
+        else if (op.value == ">=")
+            program.push({bvm::OPCODE::PGE, {}});
+    } else
+        error("Unsupported binary operator " + op.value + " on " + retval1);
 }
 
 UnaryExprAST::UnaryExprAST(Token o, std::unique_ptr<ExprAST> opd) : op(o), operand(std::move(opd)) {}
@@ -260,6 +310,9 @@ std::vector<std::string> UnaryExprAST::get_dependencies() { return operand->get_
 void UnaryExprAST::codegen(Program &program) {
     std::string retval = operand->evaltype(program);
     operand->codegen(program);
+    if (is_pointer(retval)) {
+        error("can't use unary operator on " + retval);
+    }
     if (op == "-") {
         if (retval[0] == 'u')
             error("can't use negation operator on unsigned types");
@@ -273,9 +326,18 @@ void UnaryExprAST::codegen(Program &program) {
             program.push({bvm::OPCODE::I64_NEGATE, {}});
         }
     } else if (op == "+") {
-
     } else if (op == "!") {
-        program.push({bvm::OPCODE::BOOL_NOT});
+        if (retval == "bool")
+            program.push({bvm::OPCODE::BOOL_NOT});
+        else
+            error("! operator on unsupported type " + retval);
+    } else if (op == "~") {
+        if (retval == "i32")
+            program.push({bvm::OPCODE::I32_NOT});
+        else if (retval == "i64")
+            program.push({bvm::OPCODE::I64_NOT});
+        else
+            error("~ operator on unsupported type " + retval);
     }
 }
 
