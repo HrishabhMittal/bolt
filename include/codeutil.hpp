@@ -1,4 +1,5 @@
 #pragma once
+#include "type.hpp"
 #include "lexer.hpp"
 #include "opcode.hpp"
 #include <string>
@@ -6,24 +7,20 @@
 extern std::vector<std::vector<std::string>> ops_by_precedence;
 extern std::vector<std::vector<std::string>> binops_by_precedence;
 
-bool type_is_unsigned(const std::string &type);
-int32_t get_type_size(const std::string &s);
-int32_t is_pointer(const std::string &s);
-
 bvm::OPCODE load_type(int size, bool is_unsigned);
 bvm::OPCODE store_type(int size);
 
 struct Identifier {
     std::string name;
-    std::string type;
+    Type type;
     bool is_const;
 };
 
 struct Function {
     uint64_t ip;
     std::string name;
-    std::vector<std::string> argtypes;
-    std::string ret_type;
+    std::vector<Type> argtypes;
+    Type ret_type;
     bool is_external = false;
 };
 
@@ -44,7 +41,7 @@ struct loop_break_continue {
 
 struct StructFeild {
     std::string name;
-    std::string type;
+    Type type;
 };
 
 struct StructInfo {
@@ -52,7 +49,7 @@ struct StructInfo {
     int total_size;
     std::vector<StructFeild> fields;
     std::map<std::string, int> offsets;
-    std::map<std::string, std::string> types;
+    std::map<std::string, Type> types;
 };
 
 class Program {
@@ -72,7 +69,7 @@ class Program {
     void precalc_all_offsets();
 
   public:
-    std::string function_return_type;
+    Type function_return_type;
     Program();
 
     std::map<std::string, uint64_t> struct_full_name_to_program_def;
@@ -111,5 +108,5 @@ class Program {
     void declare(Identifier i);
     bool isconst(std::string iden, std::string pkg_name);
     int64_t getaddress(std::string iden, std::string pkg_name);
-    std::string gettype(std::string iden, std::string pkg_name);
+    Type gettype(std::string iden, std::string pkg_name);
 };

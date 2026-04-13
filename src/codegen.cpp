@@ -1,6 +1,7 @@
 #include "codegen.hpp"
 #include "header.hpp"
 #include "opcode.hpp"
+#include "type.hpp"
 #include <iostream>
 
 void printSpace(int space) {
@@ -10,7 +11,8 @@ void printSpace(int space) {
 
 bool ExprAST::implicit_conversion() { return false; }
 
-TypeCastAST::TypeCastAST(std::unique_ptr<ExprAST> arg, std::string t) : arg(std::move(arg)), cast_to(t) {}
+TypeCastAST::TypeCastAST(std::unique_ptr<ExprAST> arg, Type t)
+    : arg(std::move(arg)), cast_to(t) {}
 
 void TypeCastAST::print(int indent) {
     printSpace(indent);
@@ -25,30 +27,30 @@ void TypeCastAST::print(int indent) {
 
 std::vector<std::string> TypeCastAST::get_dependencies() { return arg->get_dependencies(); }
 
-std::string TypeCastAST::evaltype(Program &program) { return cast_to; }
+Type TypeCastAST::evaltype(Program &program) { return cast_to; }
 
 void TypeCastAST::codegen(Program &program) {
-    std::string argtype = arg->evaltype(program);
-    std::string target = cast_to;
+    Type argtype = arg->evaltype(program);
+    Type target = cast_to;
     arg->codegen(program);
     if (argtype == target)
         return;
-    bool arg_is_float = (argtype == "f32" || argtype == "f64");
-    bool target_is_float = (target == "f32" || target == "f64");
+    bool arg_is_float = (argtype.value_type() == ValueType::F32 || argtype.value_type() == ValueType::F64);
+    bool target_is_float = (target.value_type() == ValueType::F32 || target.value_type() == ValueType::F64);
 
     if (arg_is_float && target_is_float) {
-        if (argtype == "f32" && target == "f64") {
+        if (argtype.value_type() == ValueType::F32 && target.value_type() == ValueType::F64) {
             program.push({bvm::OPCODE::F32_TO_F64});
             return;
-        } else if (argtype == "f64" && target == "f32") {
+        } else if (argtype.value_type() == ValueType::F64 && target.value_type() == ValueType::F32) {
             program.push({bvm::OPCODE::F64_TO_F32});
             return;
         }
     } else if (arg_is_float && !target_is_float) {
-        bool target_signed = (target[0] == 'i');
-        bool target_64 = (target == "i64" || target == "u64");
+        bool target_signed = target.is_signed_num();
+        bool target_64 = target.is_number() && target.size() == 8;
 
-        if (argtype == "f32") {
+        if (argtype.value_type() == ValueType::F32) {
             if (target_64) {
                 program.push({target_signed ? bvm::OPCODE::F32_TO_I64 : bvm::OPCODE::F32_TO_U64});
                 return;
@@ -66,10 +68,10 @@ void TypeCastAST::codegen(Program &program) {
             }
         }
     } else if (!arg_is_float && target_is_float) {
-        bool arg_signed = (argtype[0] == 'i');
-        bool arg_64 = (argtype == "i64" || argtype == "u64");
+        bool arg_signed = argtype.is_signed_num();
+        bool arg_64 = argtype.is_number() && argtype.size() == 8;
 
-        if (target == "f32") {
+        if (target.value_type() == ValueType::F32) {
             if (arg_64) {
                 program.push({arg_signed ? bvm::OPCODE::I64_TO_F32 : bvm::OPCODE::U64_TO_F32});
                 return;
@@ -87,9 +89,9 @@ void TypeCastAST::codegen(Program &program) {
             }
         }
     } else if (!arg_is_float && !target_is_float) {
-        bool arg_signed = (argtype[0] == 'i');
-        bool arg_64 = (argtype == "i64" || argtype == "u64");
-        bool target_64 = (target == "i64" || target == "u64");
+        bool arg_signed = argtype.is_signed_num();
+        bool arg_64 = (argtype.value_type() == ValueType::I64 || argtype.value_type() == ValueType::U64);
+        bool target_64 = (target.value_type() == ValueType::I64 || target.value_type() == ValueType::U64);
 
         if (!arg_64 && target_64) {
             program.push({arg_signed ? bvm::OPCODE::I32_EXTEND_I64 : bvm::OPCODE::U32_EXTEND_I64});
@@ -101,7 +103,8 @@ void TypeCastAST::codegen(Program &program) {
             return;
         }
     }
-    error("conversion from type: " + argtype + " to type: " + cast_to + " is not possible.");
+    error("conversion from type: " + to_string(argtype.value_type()) + " to type: " + to_string(cast_to.value_type()) +
+          " is not possible.");
 }
 
 BinaryExprAST::BinaryExprAST(std::unique_ptr<ExprAST> l, Token o, std::unique_ptr<ExprAST> r)
@@ -124,24 +127,25 @@ std::vector<std::string> BinaryExprAST::get_dependencies() {
     return ldeps;
 }
 
-std::string BinaryExprAST::evaltype(Program &program) {
-    std::string ltype = lhs->evaltype(program);
+Type BinaryExprAST::evaltype(Program &program) {
+    Type ltype = lhs->evaltype(program);
     bool limplicit = lhs->implicit_conversion();
-    std::string rtype = rhs->evaltype(program);
+    Type rtype = rhs->evaltype(program);
     bool rimplicit = rhs->implicit_conversion();
     if (ltype != rtype) {
-        error("Type mismatch in expression: cannot operate on \"" + ltype + "\" and \"" + rtype + "\"");
+        error("Type mismatch in expression: cannot operate on \"" + to_string(ltype.value_type()) + "\" and \"" +
+              to_string(rtype.value_type()) + "\"");
     }
     if (op.value == "==" || op.value == "!=" || op.value == "<" || op.value == ">" || op.value == "<=" ||
         op.value == ">=") {
-        return "bool";
+        return Type(ValueType::BOOL);
     }
-    if (ltype == "bool" && (op.value == "&&" || op.value == "||")) {
-        return "bool";
+    if (ltype.value_type() == ValueType::BOOL && (op.value == "&&" || op.value == "||")) {
+        return Type(ValueType::BOOL);
     }
     if (op.value == "%") {
-        if (ltype != "i32" && ltype != "i64") {
-            error("Type error: Modulo operator '%' not supported for type \"" + ltype + "\"");
+        if (ltype.value_type() != ValueType::I32 && ltype.value_type() != ValueType::I64) {
+            error("Type error: Modulo operator '%' not supported for type \"" + to_string(ltype.value_type()) + "\"");
         }
         return ltype;
     }
@@ -157,118 +161,119 @@ std::string BinaryExprAST::evaltype(Program &program) {
 void BinaryExprAST::codegen(Program &program) {
     lhs->codegen(program);
     rhs->codegen(program);
-    std::string retval1 = lhs->evaltype(program);
-    std::string retval2 = rhs->evaltype(program);
+    Type retval1 = lhs->evaltype(program);
+    Type retval2 = rhs->evaltype(program);
     if (retval1 != retval2) {
-        error("operation on \"" + retval1 + "\" and \"" + retval2 + "\" is not supported");
+        error("operation on \"" + to_string(retval1.value_type()) + "\" and \"" + to_string(retval2.value_type()) +
+              "\" is not supported");
     }
-    std::string t = retval1;
-    if (op.value == "&&" && retval1 == "bool") {
+    Type t = retval1;
+    if (op.value == "&&" && retval1.value_type() == ValueType::BOOL) {
         program.push({bvm::OPCODE::I32_AND, {}});
-    } else if (op.value == "||" && retval1 == "bool") {
+    } else if (op.value == "||" && retval1.value_type() == ValueType::BOOL) {
         program.push({bvm::OPCODE::I32_OR, {}});
     } else if (op.value == "&") {
-        if (t == "i32" || t == "i64")
+        if (t.value_type() == ValueType::I32 || t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I32_AND, {}});
-        else if (t == "i64" || t == "u64")
+        else if (t.value_type() == ValueType::I64 || t.value_type() == ValueType::U64)
             program.push({bvm::OPCODE::I64_AND, {}});
         else
-            error("& operator on unsupported type: " + retval1);
+            error("& operator on unsupported type: " + to_string(retval1.value_type()));
     } else if (op.value == "|") {
-        if (t == "i32" || t == "i64")
+        if (t.value_type() == ValueType::I32 || t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I32_OR, {}});
-        else if (t == "i64" || t == "u64")
+        else if (t.value_type() == ValueType::I64 || t.value_type() == ValueType::U64)
             program.push({bvm::OPCODE::I64_OR, {}});
         else
-            error("| operator on unsupported type: " + retval1);
+            error("| operator on unsupported type: " + to_string(retval1.value_type()));
     } else if (op.value == "^") {
-        if (t == "i32" || t == "i64")
+        if (t.value_type() == ValueType::I32 || t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I32_XOR, {}});
-        else if (t == "i64" || t == "u64")
+        else if (t.value_type() == ValueType::I64 || t.value_type() == ValueType::U64)
             program.push({bvm::OPCODE::I64_XOR, {}});
         else
-            error("^ operator on unsupported type: " + retval1);
+            error("^ operator on unsupported type: " + to_string(retval1.value_type()));
     } else if (op.value == "<<") {
-        if (t == "i32" || t == "i64")
+        if (t.value_type() == ValueType::I32 || t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I32_SHL, {}});
-        else if (t == "i64" || t == "u64")
+        else if (t.value_type() == ValueType::I64 || t.value_type() == ValueType::U64)
             program.push({bvm::OPCODE::I64_SHL, {}});
         else
-            error("<< operator on unsupported type: " + retval1);
+            error("<< operator on unsupported type: " + to_string(retval1.value_type()));
     } else if (op.value == ">>") {
-        if (t == "u32")
+        if (t.value_type() == ValueType::U32)
             program.push({bvm::OPCODE::U32_SHR, {}});
-        else if (t == "i32")
+        else if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_SHR, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_SHR, {}});
-        else if (t == "u64")
+        else if (t.value_type() == ValueType::U64)
             program.push({bvm::OPCODE::U64_SHR, {}});
         else
-            error(">> operator on unsupported type: " + retval1);
+            error(">> operator on unsupported type: " + to_string(retval1.value_type()));
     } else if (op.value == "+") {
-        if (t == "i32")
+        if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_ADD, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_ADD, {}});
-        else if (t == "f32")
+        else if (t.value_type() == ValueType::F32)
             program.push({bvm::OPCODE::F32_ADD, {}});
-        else if (t == "f64")
+        else if (t.value_type() == ValueType::F64)
             program.push({bvm::OPCODE::F64_ADD, {}});
         else
             error("addition on unsupported type");
         return;
     } else if (op.value == "-") {
-        if (t == "i32")
+        if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_SUB, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_SUB, {}});
-        else if (t == "f32")
+        else if (t.value_type() == ValueType::F32)
             program.push({bvm::OPCODE::F32_SUB, {}});
-        else if (t == "f64")
+        else if (t.value_type() == ValueType::F64)
             program.push({bvm::OPCODE::F64_SUB, {}});
         else
             error("subtraction on unsupported type");
         return;
     } else if (op.value == "*") {
-        if (t == "i32")
+        if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_MULT, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_MULT, {}});
-        else if (t == "f32")
+        else if (t.value_type() == ValueType::F32)
             program.push({bvm::OPCODE::F32_MULT, {}});
-        else if (t == "f64")
+        else if (t.value_type() == ValueType::F64)
             program.push({bvm::OPCODE::F64_MULT, {}});
         else
             error("multiplication on unsupported type");
         return;
     } else if (op.value == "/") {
-        if (t == "i32")
+        if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_DIV, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_DIV, {}});
-        else if (t == "f32")
+        else if (t.value_type() == ValueType::F32)
             program.push({bvm::OPCODE::F32_DIV, {}});
-        else if (t == "f64")
+        else if (t.value_type() == ValueType::F64)
             program.push({bvm::OPCODE::F64_DIV, {}});
         else
             error("division on unsupported type");
         return;
     } else if (op.value == "%") {
-        if (t == "i32")
+        if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_MOD, {}});
-        else if (t == "i64")
+        else if (t.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_MOD, {}});
         else
             error("Modulo operator not supported for floating points");
         return;
     } else if (op.value == "==" || op.value == "!=" || op.value == "<" || op.value == ">" || op.value == ">=" ||
                op.value == "<=") {
-        if (t == "f32")
+        if (t.value_type() == ValueType::F32)
             program.push({bvm::OPCODE::F32_CMP, {}});
-        else if (t == "f64")
+        else if (t.value_type() == ValueType::F64)
             program.push({bvm::OPCODE::F64_CMP, {}});
-        else if (t == "i32")
+        else if (t.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_CMP, {}});
         else
             program.push({bvm::OPCODE::I64_CMP, {}});
@@ -286,7 +291,7 @@ void BinaryExprAST::codegen(Program &program) {
         else if (op.value == ">=")
             program.push({bvm::OPCODE::PGE, {}});
     } else
-        error("Unsupported binary operator " + op.value + " on " + retval1);
+        error("Unsupported binary operator " + op.value + " on " + to_string(retval1.value_type()));
 }
 
 UnaryExprAST::UnaryExprAST(Token o, std::unique_ptr<ExprAST> opd) : op(o), operand(std::move(opd)) {}
@@ -300,44 +305,44 @@ void UnaryExprAST::print(int indent) {
     operand->print(indent);
 }
 
-std::string UnaryExprAST::evaltype(Program &program) {
-    std::string retval = operand->evaltype(program);
+Type UnaryExprAST::evaltype(Program &program) {
+    Type retval = operand->evaltype(program);
     return retval;
 }
 
 std::vector<std::string> UnaryExprAST::get_dependencies() { return operand->get_dependencies(); }
 
 void UnaryExprAST::codegen(Program &program) {
-    std::string retval = operand->evaltype(program);
+    Type retval = operand->evaltype(program);
     operand->codegen(program);
-    if (is_pointer(retval)) {
-        error("can't use unary operator on " + retval);
+    if (retval.is_pointer()) {
+        error("can't use unary operator on " + to_string(retval.value_type()));
     }
     if (op == "-") {
-        if (retval[0] == 'u')
+        if (retval.is_unsigned())
             error("can't use negation operator on unsigned types");
-        if (retval == "f32") {
+        if (retval.value_type() == ValueType::F32) {
             program.push({bvm::OPCODE::F32_NEGATE, {}});
-        } else if (retval == "f64") {
+        } else if (retval.value_type() == ValueType::F64) {
             program.push({bvm::OPCODE::F64_NEGATE, {}});
-        } else if (retval == "i32") {
+        } else if (retval.value_type() == ValueType::I32) {
             program.push({bvm::OPCODE::I32_NEGATE, {}});
         } else {
             program.push({bvm::OPCODE::I64_NEGATE, {}});
         }
     } else if (op == "+") {
     } else if (op == "!") {
-        if (retval == "bool")
+        if (retval.value_type() == ValueType::BOOL)
             program.push({bvm::OPCODE::BOOL_NOT});
         else
-            error("! operator on unsupported type " + retval);
+            error("! operator on unsupported type " + to_string(retval.value_type()));
     } else if (op == "~") {
-        if (retval == "i32")
+        if (retval.value_type() == ValueType::I32)
             program.push({bvm::OPCODE::I32_NOT});
-        else if (retval == "i64")
+        else if (retval.value_type() == ValueType::I64)
             program.push({bvm::OPCODE::I64_NOT});
         else
-            error("~ operator on unsupported type " + retval);
+            error("~ operator on unsupported type " + to_string(retval.value_type()));
     }
 }
 
@@ -353,7 +358,7 @@ void BooleanExprAST::print(int indent) {
 
 std::vector<std::string> BooleanExprAST::get_dependencies() { return {}; }
 
-std::string BooleanExprAST::evaltype(Program &program) { return "bool"; }
+Type BooleanExprAST::evaltype(Program &program) { return Type(ValueType::BOOL); }
 
 void BooleanExprAST::codegen(Program &program) {
     if (boolean == "false") {
@@ -377,18 +382,18 @@ void NumberExprAST::print(int indent) {
 
 std::vector<std::string> NumberExprAST::get_dependencies() { return {}; }
 
-std::string NumberExprAST::evaltype(Program &program) {
+Type NumberExprAST::evaltype(Program &program) {
     Value vt = valuetype(number);
     if (vt == INT) {
         long long val = std::stoll(number.value);
         if (val <= 2147483647LL && val >= -2147483648LL) {
-            return "i32";
+            return Type(ValueType::I32);
         }
-        return "i64";
+        return Type(ValueType::I64);
     } else if (vt == FLOAT)
-        return "f32";
+        return Type(ValueType::F32);
     else if (vt == DOUBLE)
-        return "f64";
+        return Type(ValueType::F64);
     else
         error("currently unsupported value");
 }
@@ -433,7 +438,7 @@ void StringExprAST::print(int indent) {
 
 std::vector<std::string> StringExprAST::get_dependencies() { return {}; }
 
-std::string StringExprAST::evaltype(Program &program) { return "string"; }
+Type StringExprAST::evaltype(Program &program) { return Type(ValueType::STRING); }
 
 void StringExprAST::codegen(Program &program) {
     std::string actual_string = resolve_string(str.value);
@@ -453,7 +458,7 @@ void IdentifierExprAST::print(int indent) {
     std::cout << "identifier: " << (identifier) << std::endl;
 }
 
-std::string IdentifierExprAST::evaltype(Program &program) { return program.gettype(identifier.value, pkg_name); }
+Type IdentifierExprAST::evaltype(Program &program) { return program.gettype(identifier.value, pkg_name); }
 
 void IdentifierExprAST::codegen(Program &program) {
     uint64_t ind = std::bit_cast<uint64_t>(program.getaddress(identifier.value, pkg_name));
@@ -489,7 +494,7 @@ std::vector<std::string> CallExprAST::get_dependencies() {
     return deps;
 }
 
-std::string CallExprAST::evaltype(Program &program) {
+Type CallExprAST::evaltype(Program &program) {
     Function func = program.get_function(callee.value, pkg_name);
     return func.ret_type;
 }
@@ -534,24 +539,24 @@ std::vector<std::string> ArrayIndexedAST::get_dependencies() {
     return deps;
 }
 
-std::string ArrayIndexedAST::evaltype(Program &program) {
-    std::string array_type = array->evaltype(program);
-    if (array_type.substr(0, 2) != "[]")
+Type ArrayIndexedAST::evaltype(Program &program) {
+    Type array_type = array->evaltype(program);
+    if (!array_type.is_array())
         error("tried to index non array type");
-    return array_type.substr(2);
+    return array_type[0];
 }
 
 void ArrayIndexedAST::codegen(Program &program) {
-    std::string type = evaltype(program);
+    Type type = evaltype(program);
     array->codegen(program);
-    std::string index_type = index->evaltype(program);
-    if (index_type != "i32")
+    Type index_type = index->evaltype(program);
+    if (index_type != Type(ValueType::I32))
         error("tried to index with type other than i32");
     index->codegen(program);
-    program.push({load_type(get_type_size(type), type_is_unsigned(type))});
+    program.push({load_type(type.size(), type.is_unsigned())});
 }
 
-ArrayExprAST::ArrayExprAST(std::string t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a)
+ArrayExprAST::ArrayExprAST(Type t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a)
     : type(t), size(std::move(size)), args(std::move(a)) {}
 
 void ArrayExprAST::print(int indent) {
@@ -574,24 +579,24 @@ std::vector<std::string> ArrayExprAST::get_dependencies() {
     return deps;
 }
 
-std::string ArrayExprAST::evaltype(Program &program) { return "[]" + type; }
+Type ArrayExprAST::evaltype(Program &program) { return Type(ValueType::ARRAY, {type}); }
 
 void ArrayExprAST::codegen(Program &program) {
-    int32_t type_size = get_type_size(type);
+    int32_t type_size = type.size();
     uint64_t val;
     if (size == nullptr)
         val = type_size * args.size();
     else
         val = std::stoll(size->number.value) * type_size;
 
-    if (size != nullptr && (size->evaltype(program) != "i32"))
-        size->number.error("size of type " + size->evaltype(program) + " cannot be used as size of array of type i32");
+    if (size != nullptr && (size->evaltype(program) != Type(ValueType::I32)))
+        size->number.error("size cannot be used as size of array of type i32");
 
-    if (val < type_size * args.size())
+    if (val < (uint64_t)(type_size * args.size()))
         size->number.error("size too small to hold all elements.");
 
     program.push({bvm::OPCODE::PUSH, {val}});
-    const uint64_t is_ptr = is_pointer(type) ? 1 : 0;
+    const uint64_t is_ptr = type.is_pointer() ? 1 : 0;
     program.push({bvm::OPCODE::MALLOC, {is_ptr}});
     uint64_t index = 0;
     for (auto &&i : args) {
@@ -635,23 +640,23 @@ void StructAccessAST::print(int indent) {
 
 std::vector<std::string> StructAccessAST::get_dependencies() { return expr->get_dependencies(); }
 
-std::string StructAccessAST::evaltype(Program &program) {
-    StructInfo info = program.get_struct(expr->evaltype(program));
+Type StructAccessAST::evaltype(Program &program) {
+    StructInfo info = program.get_struct(expr->evaltype(program).get_name());
     if (!info.types.count(field_name))
         error("Field " + field_name + " not found.");
     return info.types[field_name];
 }
 
 void StructAccessAST::codegen(Program &program) {
-    StructInfo info = program.get_struct(expr->evaltype(program));
+    StructInfo info = program.get_struct(expr->evaltype(program).get_name());
     int offset = info.offsets[field_name];
-    std::string type = info.types[field_name];
-    int type_size = get_type_size(type);
+    Type type = info.types[field_name];
+    int type_size = type.size();
     int index = offset / type_size;
 
     expr->codegen(program);
     program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
-    program.push({load_type(type_size, type_is_unsigned(type)), {}});
+    program.push({load_type(type_size, type.is_unsigned()), {}});
 }
 
 GlobalDeclarationAST::GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
@@ -667,7 +672,7 @@ void GlobalDeclarationAST::print(int indent) {
 }
 
 void GlobalDeclarationAST::codegen(Program &program) {
-    std::string type = expr->evaltype(program);
+    Type type = expr->evaltype(program);
     Identifier i = {identifier.value, type, is_const};
     expr->codegen(program);
     program.declare(i);
@@ -687,7 +692,7 @@ void DeclarationAST::print(int indent) {
 }
 
 void DeclarationAST::codegen(Program &program) {
-    std::string type = expr->evaltype(program);
+    Type type = expr->evaltype(program);
     Identifier i = {identifier.value, type, is_const};
     expr->codegen(program);
     program.declare(i);
@@ -710,42 +715,41 @@ void AssignmentAST::print(int indent) {
 }
 
 void AssignmentAST::codegen(Program &program) {
-    std::string expr_type = expr->evaltype(program);
+    Type expr_type = expr->evaltype(program);
     if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
         bool is_iden_const = program.isconst(idNode->identifier.value, idNode->pkg_name);
         if (is_iden_const) {
             error("attempt to assign to constant value " + idNode->identifier.value + " failed.");
         }
-        std::string iden_type = program.gettype(idNode->identifier.value, idNode->pkg_name);
+        Type iden_type = program.gettype(idNode->identifier.value, idNode->pkg_name);
         if (expr_type != iden_type) {
-            error("attempt to assign " + expr_type + " to " + idNode->identifier.value + " of type " + iden_type +
-                  " failed.");
+            error("attempt to assign different type to " + idNode->identifier.value + " failed.");
         }
         expr->codegen(program);
         program.push({bvm::OPCODE::STORE,
                       {std::bit_cast<uint64_t>(program.getaddress(idNode->identifier.value, idNode->pkg_name))}});
     } else if (auto arr = dynamic_cast<ArrayIndexedAST *>(lhs.get())) {
-        std::string arr_type = arr->array->evaltype(program);
-        std::string element_type = arr_type.substr(2);
+        Type arr_type = arr->array->evaltype(program);
+        Type element_type = arr_type[0];
         if (element_type != expr_type)
-            error("cannot assign value of type " + expr_type + " to array element of type " + element_type);
-        std::string index_type = arr->index->evaltype(program);
-        if (index_type != "i32")
+            error("cannot assign different type to array element.");
+        Type index_type = arr->index->evaltype(program);
+        if (index_type != Type(ValueType::I32))
             error("array index must be i32");
         arr->array->codegen(program);
         arr->index->codegen(program);
         expr->codegen(program);
-        program.push({store_type(get_type_size(element_type)), {}});
+        program.push({store_type(element_type.size()), {}});
     } else if (auto str_acc = dynamic_cast<StructAccessAST *>(lhs.get())) {
-        std::string struct_type = str_acc->expr->evaltype(program);
-        StructInfo info = program.get_struct(struct_type);
+        Type struct_type = str_acc->expr->evaltype(program);
+        StructInfo info = program.get_struct(struct_type.get_name());
         int offset = info.offsets[str_acc->field_name];
-        std::string type = info.types[str_acc->field_name];
+        Type type = info.types[str_acc->field_name];
 
         if (type != expr_type)
-            error("Cannot assign " + expr_type + " to field of type " + type);
+            error("Cannot assign different type to field.");
 
-        int type_size = get_type_size(type);
+        int type_size = type.size();
         int index = offset / type_size;
 
         str_acc->expr->codegen(program);
@@ -757,7 +761,7 @@ void AssignmentAST::codegen(Program &program) {
     }
 }
 
-PrototypeAST::PrototypeAST(std::vector<std::pair<std::string, Token>> a, std::string pkg)
+PrototypeAST::PrototypeAST(std::vector<std::pair<Type, Token>> a, std::string pkg)
     : pkg_name(pkg), args(std::move(a)) {}
 
 void PrototypeAST::print(int indent) {
@@ -770,8 +774,8 @@ void PrototypeAST::print(int indent) {
     }
 }
 
-std::vector<std::string> PrototypeAST::type_list() {
-    std::vector<std::string> v;
+std::vector<Type> PrototypeAST::type_list() {
+    std::vector<Type> v;
     for (auto &i : args)
         v.push_back(i.first);
     return v;
@@ -809,7 +813,7 @@ void BlockAST::codegen(Program &program, bool push_scope) {
         program.delete_scope();
 }
 
-ExternFunctionAST::ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::string pkg)
+ExternFunctionAST::ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::string pkg)
     : name(n), proto(std::move(p)), returnType(r), pkg_name(pkg) {}
 
 void ExternFunctionAST::print(int indent) {
@@ -828,7 +832,7 @@ void ExternFunctionAST::codegen(Program &program) {
     program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType, true});
 }
 
-FunctionAST::FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::unique_ptr<BlockAST> b,
+FunctionAST::FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::unique_ptr<BlockAST> b,
                          std::string pkg)
     : name(n), proto(std::move(p)), returnType(r), pkg_name(pkg), body(std::move(b)) {}
 
@@ -894,7 +898,7 @@ void ConditionalAST::codegen(Program &program) {
     const bool push_scope = true;
     std::vector<size_t> end_jumps;
     ifCondition->codegen(program);
-    if (ifCondition->evaltype(program) != "bool")
+    if (ifCondition->evaltype(program) != Type(ValueType::BOOL))
         error("cannot evaluate expression to type bool");
     size_t jnc = program.size();
     program.push({bvm::OPCODE::JNC, {}});
@@ -903,7 +907,7 @@ void ConditionalAST::codegen(Program &program) {
     program.push({bvm::OPCODE::JMP, {}});
     program[jnc].operands[0] = program.size();
     for (auto &&i : elseIfs) {
-        if (i.first->evaltype(program) != "bool")
+        if (i.first->evaltype(program) != Type(ValueType::BOOL))
             error("cannot evaluate expression to type bool");
         i.first->codegen(program);
         jnc = program.size();
@@ -938,7 +942,7 @@ void WhileAST::print(int indent) {
 void WhileAST::codegen(Program &program) {
     const bool push_scope = true;
     size_t while_start = program.size();
-    if (condition->evaltype(program) != "bool")
+    if (condition->evaltype(program) != Type(ValueType::BOOL))
         error("cannot evaluate expression to type bool");
     condition->codegen(program);
     size_t jnc = program.size();
@@ -979,7 +983,7 @@ void ForAST::codegen(Program &program) {
     program.new_scope();
     init->codegen(program);
     size_t for_start = program.size();
-    if (condition->evaltype(program) != "bool")
+    if (condition->evaltype(program) != Type(ValueType::BOOL))
         error("cannot evaluate expression to type bool");
     condition->codegen(program);
     size_t jnc = program.size();
@@ -1013,7 +1017,7 @@ void ReturnAST::codegen(Program &program) {
             error("return type doesnt match the function signature");
         }
     } else {
-        if (program.function_return_type != "void") {
+        if (program.function_return_type != Type(ValueType::VOID)) {
             error("return type doesnt match the function signature");
         }
     }
@@ -1069,12 +1073,12 @@ void JustExprAST::print(int indent) {
 
 void JustExprAST::codegen(Program &program) {
     expr->codegen(program);
-    if (expr->evaltype(program) != "void") {
+    if (expr->evaltype(program) != Type(ValueType::VOID)) {
         program.push({bvm::OPCODE::POP});
     }
 }
 
-StructInitAST::StructInitAST(std::string t, std::vector<std::unique_ptr<ExprAST>> a) : type(t), args(std::move(a)) {}
+StructInitAST::StructInitAST(Type t, std::vector<std::unique_ptr<ExprAST>> a) : type(t), args(std::move(a)) {}
 
 void StructInitAST::print(int indent) {
     printSpace(indent);
@@ -1092,10 +1096,10 @@ std::vector<std::string> StructInitAST::get_dependencies() {
     return deps;
 }
 
-std::string StructInitAST::evaltype(Program &program) { return type; }
+Type StructInitAST::evaltype(Program &program) { return type; }
 
 void StructInitAST::codegen(Program &program) {
-    StructInfo info = program.get_struct(type);
+    StructInfo info = program.get_struct(type.get_name());
     if (args.size() != info.fields.size())
         error("Struct init argument count mismatch.");
 
@@ -1103,7 +1107,7 @@ void StructInitAST::codegen(Program &program) {
     for (size_t i = 0; i < args.size(); i++) {
         std::string field_name = info.fields[i].name;
         int offset = info.offsets[field_name];
-        int type_size = get_type_size(info.fields[i].type);
+        int type_size = info.fields[i].type.size();
         int index = offset / type_size;
 
         program.push({bvm::OPCODE::DUP});
@@ -1137,17 +1141,17 @@ std::vector<std::string> MethodCallAST::get_dependencies() {
     return deps;
 }
 
-std::string MethodCallAST::evaltype(Program &program) {
-    std::string struct_type = object->evaltype(program);
-    std::string func_target = struct_type + ":" + method_name;
+Type MethodCallAST::evaltype(Program &program) {
+    Type struct_type = object->evaltype(program);
+    std::string func_target = struct_type.get_name() + ":" + method_name;
     Function func = program.get_function(func_target, pkg_name);
     return func.ret_type;
 }
 void MethodCallAST::print(int indent) {}
 
 void MethodCallAST::codegen(Program &program) {
-    std::string struct_type = object->evaltype(program);
-    std::string func_target = struct_type + ":" + method_name;
+    Type struct_type = object->evaltype(program);
+    std::string func_target = struct_type.get_name() + ":" + method_name;
     Function resolved_func = program.get_function(func_target, pkg_name);
     if (resolved_func.argtypes.size() != args.size() + 1) {
         error("Incorrect argument count for method " + method_name);

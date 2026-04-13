@@ -1,3 +1,4 @@
+// src/codeutil.cpp
 #include "codeutil.hpp"
 #include "header.hpp"
 
@@ -21,28 +22,6 @@ std::vector<std::vector<std::string>> binops_by_precedence = {
     {"*", "/", "%"}, {"+", "-"}, {"<<", ">>"}, {"<", "<=", ">", ">="}, {"==", "!="}, {"&"}, {"^"},
     {"|"},           {"&&"},     {"||"},
 };
-
-bool type_is_unsigned(const std::string &type) { return type[0] != 'i'; }
-
-int32_t get_type_size(const std::string &s) {
-    if (s == "i32" || s == "u32" || s == "f32")
-        return 4;
-    else if (s == "i8" || s == "u8")
-        return 1;
-    else if (s == "i16" || s == "u16")
-        return 2;
-    else
-        return 8;
-}
-
-int32_t is_pointer(const std::string &s) {
-    const std::vector<std::string> v{"u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64"};
-    for (auto i : v) {
-        if (i == s)
-            return false;
-    }
-    return true;
-}
 
 bvm::OPCODE load_type(int size, bool is_unsigned) {
     if (size == 1) {
@@ -92,11 +71,11 @@ void Program::declare_struct(std::string name, const std::vector<StructFeild> &f
     struct_defs.push_back({bvm::OPCODE::DEF_STRUCT});
 
     for (auto &f : fields) {
-        int align = get_type_size(f.type);
+        int align = f.type.size();
         if (current_size % align != 0) {
             current_size += align - (current_size % align);
         }
-        if (is_pointer(f.type))
+        if (f.type.is_pointer())
             struct_defs.push_back({bvm::OPCODE::PTR_AT, {static_cast<uint64_t>(current_size / 8)}});
         info.offsets[f.name] = current_size;
         info.types[f.name] = f.type;
@@ -347,7 +326,7 @@ bool Program::isconst(std::string iden, std::string pkg_name) {
     }
     error("identifier " + iden + " doesn't exist.");
 }
-std::string Program::gettype(std::string iden, std::string pkg_name) {
+Type Program::gettype(std::string iden, std::string pkg_name) {
     for (ssize_t i = static_cast<int64_t>(scope.size()) - 1; i >= 0; i--) {
         for (size_t j = 0; j < scope[i].size(); j++) {
             if (scope[i][j].name == iden)

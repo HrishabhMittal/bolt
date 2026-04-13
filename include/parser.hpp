@@ -20,7 +20,7 @@ class Parser {
     bool match_binop();
     Token expect(TokenType type, const std::string &val = "");
 
-    std::string parseTypeName();
+    Type parseTypeName();
     std::unique_ptr<ReturnAST> parseReturn();
     std::unique_ptr<BreakContinueAST> parseBreakContinue();
     std::unique_ptr<ExprAST> parseValue(bool allowStructInit = true);

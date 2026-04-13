@@ -56,9 +56,9 @@ Token Parser::expect(TokenType type, const std::string &val) {
     return tok;
 }
 
-std::string Parser::parseTypeName() {
+Type Parser::parseTypeName() {
     if (match(TokenType::KEYWORD)) {
-        return expect(TokenType::KEYWORD).value;
+        return from_primitive(expect(TokenType::KEYWORD).value);
     } else if (match(TokenType::IDENTIFIER)) {
         Token id = expect(TokenType::IDENTIFIER);
         if (match(TokenType::PUNCTUATOR, "::")) {
@@ -68,14 +68,14 @@ std::string Parser::parseTypeName() {
             if (current_imports.count(id.value)) {
                 pkg = current_imports[id.value];
             }
-            return pkg + "::" + struct_name.value;
+            return Type(ValueType::STRUCT, {}, pkg + "::" + struct_name.value);
         }
-        return current_package + "::" + id.value;
+        return Type(ValueType::STRUCT, {}, current_package + "::" + id.value);
     } else if (match(TokenType::PUNCTUATOR, "[")) {
         expect(TokenType::PUNCTUATOR, "[");
         expect(TokenType::PUNCTUATOR, "]");
-        std::string t = parseTypeName();
-        return "[]" + t;
+        Type t = parseTypeName();
+        return Type(ValueType::ARRAY, {t});
     }
     currentToken.error("expected a type name (built-in or struct)");
 }
@@ -140,7 +140,7 @@ std::unique_ptr<ExprAST> Parser::parseValue(bool allowStructInit) {
             if (struct_type.find("::") == std::string::npos)
                 struct_type = current_package + "::" + struct_type;
 
-            return std::make_unique<StructInitAST>(struct_type, std::move(args));
+            return std::make_unique<StructInitAST>(Type(ValueType::STRUCT, {}, struct_type), std::move(args));
         }
 
         if (match(TokenType::PUNCTUATOR, "(")) {
@@ -233,7 +233,7 @@ std::unique_ptr<ExprAST> Parser::parseArray() {
         num = std::make_unique<NumberExprAST>(expect(TokenType::NUMBER));
     }
     expect(TokenType::PUNCTUATOR, "]");
-    std::string array_type = parseTypeName();
+    Type array_type = parseTypeName();
     expect(TokenType::PUNCTUATOR, "{");
     std::vector<std::unique_ptr<ExprAST>> args;
     if (!match(TokenType::PUNCTUATOR, "}")) {
@@ -261,7 +261,7 @@ std::unique_ptr<ExprAST> Parser::parseExpr(int exprPrec, bool allowStructInit) {
     while (true) {
         if (match(TokenType::KEYWORD, "as")) {
             next();
-            std::string cast_type = parseTypeName();
+            Type cast_type = parseTypeName();
             lhs = std::make_unique<TypeCastAST>(std::move(lhs), cast_type);
             continue;
         }
@@ -298,7 +298,7 @@ std::unique_ptr<GlobalStatementAST> Parser::parseExternFunction() {
     expect(TokenType::PUNCTUATOR, "(");
     auto proto = parsePrototype();
     expect(TokenType::PUNCTUATOR, ")");
-    std::string returnType = "void";
+    Type returnType = Type(ValueType::VOID);
     if (match(TokenType::PUNCTUATOR, "(")) {
         expect(TokenType::PUNCTUATOR, "(");
         returnType = parseTypeName();
@@ -333,7 +333,7 @@ std::unique_ptr<GlobalStatementAST> Parser::parseStructDefinition() {
         }
 
         Token field_name = expect(TokenType::IDENTIFIER);
-        std::string type = parseTypeName();
+        Type type = parseTypeName();
         fields.push_back({field_name.value, type});
 
         if (match(TokenType::PUNCTUATOR, ",") || match(TokenType::PUNCTUATOR, ";"))
@@ -459,12 +459,12 @@ std::unique_ptr<GlobalStatementAST> Parser::parseImpl() {
 
         expect(TokenType::PUNCTUATOR, "(");
         auto proto = parsePrototype();
-        proto->args.insert(proto->args.begin(), {current_package + "::" + structName.value,
+        proto->args.insert(proto->args.begin(), {Type(ValueType::STRUCT, {}, current_package + "::" + structName.value),
                                                  Token{TokenType::IDENTIFIER, "this", 0, 0, nullptr}});
 
         expect(TokenType::PUNCTUATOR, ")");
         expect(TokenType::PUNCTUATOR, "(");
-        std::string returnType = parseTypeName();
+        Type returnType = parseTypeName();
         expect(TokenType::PUNCTUATOR, ")");
 
         insideFunction++;
@@ -500,11 +500,11 @@ std::unique_ptr<StatementAST> Parser::parseStatement() {
 }
 
 std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
-    std::vector<std::pair<std::string, Token>> args;
+    std::vector<std::pair<Type, Token>> args;
     if (!match(TokenType::PUNCTUATOR, ")")) {
         while (true) {
             Token name = expect(TokenType::IDENTIFIER);
-            std::string type = parseTypeName();
+            Type type = parseTypeName();
             args.push_back({type, name});
             if (!match(TokenType::PUNCTUATOR, ","))
                 break;
@@ -521,7 +521,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
     auto proto = parsePrototype();
     expect(TokenType::PUNCTUATOR, ")");
 
-    std::string returnType = "void";
+    Type returnType = Type(ValueType::VOID);
     if (match(TokenType::PUNCTUATOR, "(")) {
         expect(TokenType::PUNCTUATOR, "(");
         returnType = parseTypeName();

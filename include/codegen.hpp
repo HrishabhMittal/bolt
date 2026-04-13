@@ -1,7 +1,7 @@
 #pragma once
 #include "codeutil.hpp"
 #include "header.hpp"
-
+#include "type.hpp"
 class AST {
   public:
     virtual void print(int indent = 0) = 0;
@@ -30,7 +30,7 @@ class ExprAST : public AST {
     virtual void print(int indent = 0) = 0;
     virtual void codegen(Program &program) = 0;
     virtual bool implicit_conversion();
-    virtual std::string evaltype(Program &program) = 0;
+    virtual Type evaltype(Program &program) = 0;
     virtual std::vector<std::string> get_dependencies() = 0;
     virtual ~ExprAST() = default;
 };
@@ -38,11 +38,11 @@ class ExprAST : public AST {
 class TypeCastAST : public ExprAST {
   public:
     std::unique_ptr<ExprAST> arg;
-    std::string cast_to;
-    TypeCastAST(std::unique_ptr<ExprAST> arg, std::string t);
+    Type cast_to;
+    TypeCastAST(std::unique_ptr<ExprAST> arg, Type t);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -54,7 +54,7 @@ class BinaryExprAST : public ExprAST {
     BinaryExprAST(std::unique_ptr<ExprAST> l, Token o, std::unique_ptr<ExprAST> r);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -65,7 +65,7 @@ class UnaryExprAST : public ExprAST {
     UnaryExprAST(Token o, std::unique_ptr<ExprAST> opd);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -75,7 +75,7 @@ class BooleanExprAST : public ExprAST {
     BooleanExprAST(Token b);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -85,7 +85,7 @@ class NumberExprAST : public ExprAST {
     NumberExprAST(Token n);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -95,7 +95,7 @@ class StringExprAST : public ExprAST {
     StringExprAST(Token s);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -106,7 +106,7 @@ class IdentifierExprAST : public ExprAST {
     IdentifierExprAST(Token id, std::string pkg);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -118,7 +118,7 @@ class CallExprAST : public ExprAST {
     CallExprAST(Token c, std::vector<std::unique_ptr<ExprAST>> a, std::string pkg);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -133,7 +133,7 @@ class MethodCallAST : public ExprAST {
                   std::string pkg);
     void print(int indent = 0) override;
     std::vector<std::string> get_dependencies() override;
-    std::string evaltype(Program &program) override;
+    Type evaltype(Program &program) override;
     void codegen(Program &program) override;
 };
 class ArrayIndexedAST : public ExprAST {
@@ -143,19 +143,19 @@ class ArrayIndexedAST : public ExprAST {
     ArrayIndexedAST(std::unique_ptr<ExprAST> array, std::unique_ptr<ExprAST> index);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
 class ArrayExprAST : public ExprAST {
   public:
-    std::string type;
+    Type type;
     std::unique_ptr<NumberExprAST> size;
     std::vector<std::unique_ptr<ExprAST>> args;
-    ArrayExprAST(std::string t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a);
+    ArrayExprAST(Type t, std::unique_ptr<NumberExprAST> size, std::vector<std::unique_ptr<ExprAST>> a);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -178,7 +178,7 @@ class StructAccessAST : public ExprAST {
     StructAccessAST(std::unique_ptr<ExprAST> e, std::string f);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 
@@ -217,10 +217,10 @@ class AssignmentAST : public StatementAST {
 class PrototypeAST : public StatementAST {
   public:
     std::string pkg_name;
-    std::vector<std::pair<std::string, Token>> args;
-    PrototypeAST(std::vector<std::pair<std::string, Token>> a, std::string pkg);
+    std::vector<std::pair<Type, Token>> args;
+    PrototypeAST(std::vector<std::pair<Type, Token>> a, std::string pkg);
     virtual void print(int indent = 0) override;
-    std::vector<std::string> type_list();
+    std::vector<Type> type_list();
     virtual void codegen(Program &program) override;
 };
 
@@ -240,9 +240,9 @@ class ExternFunctionAST : public GlobalStatementAST {
   public:
     Token name;
     std::unique_ptr<PrototypeAST> proto;
-    std::string returnType;
+    Type returnType;
     std::string pkg_name;
-    ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::string pkg);
+    ExternFunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::string pkg);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };
@@ -251,10 +251,10 @@ class FunctionAST : public GlobalStatementAST {
   public:
     Token name;
     std::unique_ptr<PrototypeAST> proto;
-    std::string returnType;
+    Type returnType;
     std::string pkg_name;
     std::unique_ptr<BlockAST> body;
-    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, std::string r, std::unique_ptr<BlockAST> b, std::string pkg);
+    FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::unique_ptr<BlockAST> b, std::string pkg);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };
@@ -344,13 +344,13 @@ class JustExprAST : public StatementAST {
 
 class StructInitAST : public ExprAST {
   public:
-    std::string type;
+    Type type;
     std::vector<std::unique_ptr<ExprAST>> args;
 
-    StructInitAST(std::string t, std::vector<std::unique_ptr<ExprAST>> a);
+    StructInitAST(Type t, std::vector<std::unique_ptr<ExprAST>> a);
     virtual void print(int indent = 0) override;
     virtual std::vector<std::string> get_dependencies() override;
-    virtual std::string evaltype(Program &program) override;
+    virtual Type evaltype(Program &program) override;
     virtual void codegen(Program &program) override;
 };
 class ProgramAST : public AST {
