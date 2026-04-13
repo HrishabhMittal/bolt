@@ -37,7 +37,7 @@ class Parser {
     std::unique_ptr<GlobalStatementAST> parseGlobalStatement();
     std::unique_ptr<StatementAST> parseJustExpr(bool For = false);
     std::unique_ptr<StatementAST> parseDeclarationAssignmentOrExpr(bool For = false, bool allowStructInit = true,
-                                                                   bool is_const = true);
+                                                                   bool is_const = false);
     std::unique_ptr<StatementAST> parseStatement();
     std::unique_ptr<PrototypeAST> parsePrototype();
     std::unique_ptr<FunctionAST> parseFunction();

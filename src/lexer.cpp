@@ -1,6 +1,7 @@
 #include "lexer.hpp"
 #include <algorithm>
 #include <cctype>
+#include <locale>
 
 Value valuetype(Token t) {
     const std::string &s = t.value;
@@ -124,6 +125,68 @@ Token Lexer::gettoken() {
     return t;
 }
 
+const std::vector<std::string> valid_symbols = {
+    "+", "-", "!", "~", "*", "/",  "%",  "<<", ">>", "<",  "<=", ">",  ">=", "==", "!=", "{",  "}",  "[",   "]",   "(",
+    ")", ",", "&", "^", "|", "&&", "||", "?",  "=",  "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
+};
+struct symbol_tree {
+    std::map<char, symbol_tree> children;
+    bool is_end = false;
+    symbol_tree() {}
+    void insert(const std::string &s) {
+        symbol_tree *st = this;
+        for (auto c : s) {
+            st = &st->children[c];
+        }
+        st->is_end = true;
+    }
+};
+symbol_tree build_tree() {
+    symbol_tree root;
+    for (const auto &s : valid_symbols) {
+        root.insert(s);
+    }
+    return root;
+}
+bool backtrack(const std::string &s, int i, const symbol_tree &root, std::vector<std::string> &current_path) {
+
+    if (i == s.length()) {
+        return true;
+    }
+
+    const symbol_tree *curr = &root;
+    std::vector<int> valid_lengths;
+
+    for (int j = i; j < s.length(); ++j) {
+        auto it = curr->children.find(s[j]);
+        if (it == curr->children.end())
+            break;
+
+        curr = &it->second;
+        if (curr->is_end) {
+            valid_lengths.push_back(j - i + 1);
+        }
+    }
+
+    for (auto it = valid_lengths.rbegin(); it != valid_lengths.rend(); ++it) {
+        int len = *it;
+        current_path.push_back(s.substr(i, len));
+        if (backtrack(s, i + len, root, current_path)) {
+            return true;
+        }
+        current_path.pop_back();
+    }
+    return false;
+}
+
+std::vector<std::string> breakIntoTokens(const std::string &s) {
+    static const symbol_tree root = build_tree();
+    std::vector<std::string> tokens;
+    if (backtrack(s, 0, root, tokens)) {
+        return tokens;
+    }
+    return {};
+}
 Token Lexer::__gettoken() {
     while (pos_line < (int64_t)data.size()) {
         std::string &line_str = data[pos_line];
@@ -187,14 +250,21 @@ Token Lexer::__gettoken() {
             while (pos_char < (int64_t)line_str.size() && ispresentin(line_str[pos_char], symbols)) {
                 value += line_str[pos_char++];
             }
-            return findtoken(value, pos_line + 1, startindex, &line_str);
+            auto broken = breakIntoTokens(value);
+            if (broken.size() == 0) {
+                // will throw error later
+                return findtoken(value, pos_line + 1, startindex, &line_str);
+            } else {
+                pos_char -= value.size();
+                pos_char += broken[0].size();
+                return findtoken(broken[0], pos_line + 1, startindex, &line_str);
+            }
         }
         value += c;
         return findtoken(value, pos_line + 1, startindex, &line_str);
     }
     return Token{TokenType::TK_EOF, "", pos_line + 1, pos_char, nullptr};
 }
-
 Token Lexer::findtoken(const std::string &s, int64_t line, int64_t index, const std::string *line_text) {
     TokenType ttype;
     if (s.empty())

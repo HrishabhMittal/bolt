@@ -298,9 +298,12 @@ std::unique_ptr<GlobalStatementAST> Parser::parseExternFunction() {
     expect(TokenType::PUNCTUATOR, "(");
     auto proto = parsePrototype();
     expect(TokenType::PUNCTUATOR, ")");
-    expect(TokenType::PUNCTUATOR, "(");
-    std::string returnType = parseTypeName();
-    expect(TokenType::PUNCTUATOR, ")");
+    std::string returnType = "void";
+    if (match(TokenType::PUNCTUATOR, "(")) {
+        expect(TokenType::PUNCTUATOR, "(");
+        returnType = parseTypeName();
+        expect(TokenType::PUNCTUATOR, ")");
+    }
     expect(TokenType::NEWLINE);
     return std::make_unique<ExternFunctionAST>(name, std::move(proto), returnType, current_package);
 }
@@ -400,7 +403,7 @@ std::unique_ptr<GlobalStatementAST> Parser::parseGlobalStatement() {
         return parseGlobalDeclaration(true);
     }
     if (match(TokenType::IDENTIFIER) && matchnext(TokenType::PUNCTUATOR, ":="))
-        return parseGlobalDeclaration();
+        return parseGlobalDeclaration(false);
     currentToken.error("Unknown global statement");
 }
 
@@ -493,7 +496,7 @@ std::unique_ptr<StatementAST> Parser::parseStatement() {
         expect(TokenType::KEYWORD);
         return parseDeclarationAssignmentOrExpr(true);
     }
-    return parseDeclarationAssignmentOrExpr();
+    return parseDeclarationAssignmentOrExpr(false);
 }
 
 std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
@@ -517,9 +520,13 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
     expect(TokenType::PUNCTUATOR, "(");
     auto proto = parsePrototype();
     expect(TokenType::PUNCTUATOR, ")");
-    expect(TokenType::PUNCTUATOR, "(");
-    std::string returnType = parseTypeName();
-    expect(TokenType::PUNCTUATOR, ")");
+
+    std::string returnType = "void";
+    if (match(TokenType::PUNCTUATOR, "(")) {
+        expect(TokenType::PUNCTUATOR, "(");
+        returnType = parseTypeName();
+        expect(TokenType::PUNCTUATOR, ")");
+    }
 
     insideFunction++;
     auto body = parseBlock();
