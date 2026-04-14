@@ -3,7 +3,7 @@
 #include "header.hpp"
 
 std::vector<std::vector<std::string>> ops_by_precedence = {
-    {"+", "-", "!", "~" },
+    {"+", "-", "!", "~"},
     {"*", "/", "%"},
     {"+", "-"},
     {"<<", ">>"},
@@ -208,7 +208,12 @@ const std::string &Program::Data() { return data_section; }
 
 const std::vector<bvm::instruction> &Program::Code() { return code; }
 
-size_t Program::get_ip() { return code.size(); }
+size_t Program::get_ip() {
+    if (pushing_to_func == "") {
+        return code.size();
+    }
+    return function_code[pushing_to_func].code.size();
+}
 
 void Program::push(const bvm::instruction &i) {
     if (pushing_to_func == "")
