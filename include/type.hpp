@@ -1,4 +1,5 @@
 #pragma once
+#include "header.hpp"
 #include <ostream>
 #include <string>
 #include <utility>
@@ -73,6 +74,19 @@ class Type {
     bool operator!=(const Type &t) const { return !(*this == t); }
     bool error() const { return type == ValueType::ERR; }
     std::string get_name() const { return name; }
+    void push(Type t) {
+        if (type != ValueType::MULTIPLE) {
+            ::error("pushing to a non-multiple type");
+        }
+        if (t == ValueType::MULTIPLE) {
+            for (auto tt : t.types)
+                types.push_back(tt);
+        } else
+            types.push_back(t);
+    }
+    size_t num_types() const {
+        return types.size();
+    }
     ssize_t size() const {
         switch (type) {
         case ValueType::ARRAY:

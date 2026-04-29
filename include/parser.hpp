@@ -21,6 +21,7 @@ class Parser {
     Token expect(TokenType type, const std::string &val = "");
 
     Type parseTypeName();
+    Type parseSingularTypeName();
     std::unique_ptr<ReturnAST> parseReturn();
     std::unique_ptr<BreakContinueAST> parseBreakContinue();
     std::unique_ptr<ExprAST> parseValue(bool allowStructInit = true);

@@ -19,9 +19,8 @@ std::vector<std::vector<std::string>> ops_by_precedence = {
 };
 
 std::vector<std::vector<std::string>> binops_by_precedence = {
-    {"*", "/", "%"}, {"+", "-"}, {"<<", ">>"}, {"<", "<=", ">", ">="}, {"==", "!="}, {"&"}, {"^"},
-    {"|"},           {"&&"},     {"||"},
-};
+    {"*", "/", "%"}, {"+", "-"}, {"<<", ">>"}, {"<", "<=", ">", ">="}, {"==", "!="}, {"&"}, {"^"}, {"|"},
+    {"&&"},          {"||"},     {","}};
 
 bvm::OPCODE load_type(int size, bool is_unsigned) {
     if (size == 1) {

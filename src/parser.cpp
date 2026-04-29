@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "header.hpp"
+#include "type.hpp"
 
 Parser::Parser() {}
 
@@ -55,8 +56,18 @@ Token Parser::expect(TokenType type, const std::string &val) {
     next();
     return tok;
 }
-
 Type Parser::parseTypeName() {
+    std::vector<Type> returns;
+    while (true) {
+        returns.push_back(parseSingularTypeName());
+        if (match(TokenType::PUNCTUATOR, ")"))
+            break;
+        expect(TokenType::PUNCTUATOR, ",");
+    }
+    return Type(ValueType::MULTIPLE, returns);
+}
+
+Type Parser::parseSingularTypeName() {
     if (match(TokenType::KEYWORD)) {
         return from_primitive(expect(TokenType::KEYWORD).value);
     } else if (match(TokenType::IDENTIFIER)) {
@@ -79,7 +90,6 @@ Type Parser::parseTypeName() {
     }
     currentToken.error("expected a type name (built-in or struct)");
 }
-
 std::unique_ptr<ReturnAST> Parser::parseReturn() {
     if (!insideFunction)
         error("return encountered outside function");

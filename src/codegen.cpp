@@ -11,8 +11,7 @@ void printSpace(int space) {
 
 bool ExprAST::implicit_conversion() { return false; }
 
-TypeCastAST::TypeCastAST(std::unique_ptr<ExprAST> arg, Type t)
-    : arg(std::move(arg)), cast_to(t) {}
+TypeCastAST::TypeCastAST(std::unique_ptr<ExprAST> arg, Type t) : arg(std::move(arg)), cast_to(t) {}
 
 void TypeCastAST::print(int indent) {
     printSpace(indent);
@@ -129,9 +128,13 @@ std::vector<std::string> BinaryExprAST::get_dependencies() {
 
 Type BinaryExprAST::evaltype(Program &program) {
     Type ltype = lhs->evaltype(program);
-    bool limplicit = lhs->implicit_conversion();
     Type rtype = rhs->evaltype(program);
-    bool rimplicit = rhs->implicit_conversion();
+    if (op.value == ",") {
+        Type total(ValueType::MULTIPLE);
+        total.push(ltype);
+        total.push(rtype);
+        return total;
+    }
     if (ltype != rtype) {
         error("Type mismatch in expression: cannot operate on \"" + to_string(ltype.value_type()) + "\" and \"" +
               to_string(rtype.value_type()) + "\"");
@@ -168,7 +171,8 @@ void BinaryExprAST::codegen(Program &program) {
               "\" is not supported");
     }
     Type t = retval1;
-    if (op.value == "&&" && retval1.value_type() == ValueType::BOOL) {
+    if (op.value == ",") {
+    } else if (op.value == "&&" && retval1.value_type() == ValueType::BOOL) {
         program.push({bvm::OPCODE::I32_AND, {}});
     } else if (op.value == "||" && retval1.value_type() == ValueType::BOOL) {
         program.push({bvm::OPCODE::I32_OR, {}});
@@ -832,8 +836,7 @@ void ExternFunctionAST::codegen(Program &program) {
     program.declare_function({UINT64_MAX, resolved_name, proto->type_list(), returnType, true});
 }
 
-FunctionAST::FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::unique_ptr<BlockAST> b,
-                         std::string pkg)
+FunctionAST::FunctionAST(Token n, std::unique_ptr<PrototypeAST> p, Type r, std::unique_ptr<BlockAST> b, std::string pkg)
     : name(n), proto(std::move(p)), returnType(r), pkg_name(pkg), body(std::move(b)) {}
 
 void FunctionAST::print(int indent) {
@@ -1073,7 +1076,12 @@ void JustExprAST::print(int indent) {
 
 void JustExprAST::codegen(Program &program) {
     expr->codegen(program);
-    if (expr->evaltype(program) != Type(ValueType::VOID)) {
+    if (expr->evaltype(program).value_type() == ValueType::VOID) {
+    } else if (expr->evaltype(program).value_type() == ValueType::MULTIPLE) {
+        const size_t num = expr->evaltype(program).num_types();
+        for (size_t i = 0; i < num; i++)
+            program.push({bvm::OPCODE::POP});
+    } else {
         program.push({bvm::OPCODE::POP});
     }
 }
