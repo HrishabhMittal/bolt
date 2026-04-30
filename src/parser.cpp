@@ -56,18 +56,20 @@ Token Parser::expect(TokenType type, const std::string &val) {
     next();
     return tok;
 }
-Type Parser::parseTypeName() {
+Type Parser::parseTypeNameList() {
     std::vector<Type> returns;
     while (true) {
-        returns.push_back(parseSingularTypeName());
+        returns.push_back(parseTypeName());
         if (match(TokenType::PUNCTUATOR, ")"))
             break;
         expect(TokenType::PUNCTUATOR, ",");
     }
+    if (returns.size() == 1)
+        return returns[0];
     return Type(ValueType::MULTIPLE, returns);
 }
 
-Type Parser::parseSingularTypeName() {
+Type Parser::parseTypeName() {
     if (match(TokenType::KEYWORD)) {
         return from_primitive(expect(TokenType::KEYWORD).value);
     } else if (match(TokenType::IDENTIFIER)) {
@@ -311,7 +313,7 @@ std::unique_ptr<GlobalStatementAST> Parser::parseExternFunction() {
     Type returnType = Type(ValueType::VOID);
     if (match(TokenType::PUNCTUATOR, "(")) {
         expect(TokenType::PUNCTUATOR, "(");
-        returnType = parseTypeName();
+        returnType = parseTypeNameList();
         expect(TokenType::PUNCTUATOR, ")");
     }
     expect(TokenType::NEWLINE);
@@ -319,13 +321,12 @@ std::unique_ptr<GlobalStatementAST> Parser::parseExternFunction() {
 }
 
 std::unique_ptr<GlobalStatementAST> Parser::parseGlobalDeclaration(bool is_const) {
-    Token id = currentToken;
-    next();
+    auto lhs = parseExpr(0, false);
     if (match(TokenType::PUNCTUATOR, ":=")) {
         next();
         auto expr = parseExpr();
         expect(TokenType::NEWLINE);
-        return std::make_unique<GlobalDeclarationAST>(id, std::move(expr), current_package, is_const);
+        return std::make_unique<GlobalDeclarationAST>(std::move(lhs), std::move(expr), current_package, is_const);
     }
     currentToken.error("Unknown global declaration statement");
 }
@@ -431,11 +432,7 @@ std::unique_ptr<StatementAST> Parser::parseDeclarationAssignmentOrExpr(bool For,
         auto rhs = parseExpr(0, allowStructInit);
         if (!For)
             expect(TokenType::NEWLINE);
-        if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
-            return std::make_unique<DeclarationAST>(idNode->identifier, std::move(rhs), idNode->pkg_name, is_const);
-        } else {
-            error("Invalid left-hand side for declaration.");
-        }
+        return std::make_unique<DeclarationAST>(std::move(lhs), std::move(rhs), current_package, is_const);
     } else if (match(TokenType::PUNCTUATOR, "=")) {
         next();
         auto rhs = parseExpr(0, allowStructInit);
@@ -474,7 +471,7 @@ std::unique_ptr<GlobalStatementAST> Parser::parseImpl() {
 
         expect(TokenType::PUNCTUATOR, ")");
         expect(TokenType::PUNCTUATOR, "(");
-        Type returnType = parseTypeName();
+        Type returnType = parseTypeNameList();
         expect(TokenType::PUNCTUATOR, ")");
 
         insideFunction++;
@@ -534,7 +531,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunction() {
     Type returnType = Type(ValueType::VOID);
     if (match(TokenType::PUNCTUATOR, "(")) {
         expect(TokenType::PUNCTUATOR, "(");
-        returnType = parseTypeName();
+        returnType = parseTypeNameList();
         expect(TokenType::PUNCTUATOR, ")");
     }
 
@@ -575,14 +572,6 @@ std::unique_ptr<StatementAST> Parser::parseWhile() {
     insideLoop--;
 
     return std::make_unique<WhileAST>(std::move(cond), std::move(body));
-}
-
-std::unique_ptr<AssignmentAST> Parser::parseAssignmentNoSemicolon() {
-    auto update_id = parseLvalue();
-    expect(TokenType::PUNCTUATOR, "=");
-    auto update_expr = parseExpr();
-    auto update = std::make_unique<AssignmentAST>(std::move(update_id), std::move(update_expr), current_package);
-    return update;
 }
 
 std::unique_ptr<StatementAST> Parser::parseFor() {

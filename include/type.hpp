@@ -1,6 +1,7 @@
 #pragma once
 #include "header.hpp"
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,11 +64,10 @@ inline std::string to_string(ValueType t) {
     std::unreachable();
 }
 class Type {
+  public:
     ValueType type;
     std::vector<Type> types;
     std::string name;
-
-  public:
     Type() : type(ValueType::VOID) {}
     Type(ValueType type, std::vector<Type> vt = {}, std::string name = "") : type(type), types(vt), name(name) {}
     bool operator==(const Type &t) const { return type == t.type && types == t.types && name == t.name; }
@@ -84,9 +84,7 @@ class Type {
         } else
             types.push_back(t);
     }
-    size_t num_types() const {
-        return types.size();
-    }
+    size_t num_types() const { return types.size(); }
     ssize_t size() const {
         switch (type) {
         case ValueType::ARRAY:
@@ -278,11 +276,25 @@ class Type {
         }
         std::unreachable();
     }
+    std::string str() {
+        std::stringstream ss;
+        ss<<*this;
+        return ss.str();
+    }
     friend std::ostream &operator<<(std::ostream &os, const Type &t) {
         if (t.is_struct()) {
             os << t.name;
         } else if (t.is_array()) {
             os << "[]" << t.types[0];
+        } else if (t.is_multiple()) {
+            os << "(";
+            for (size_t i = 0; i < t.types.size(); i++) {
+                os << t.types[i];
+                if (i < t.types.size() - 1) {
+                    os << ", ";
+                }
+            }
+            os << ")";
         } else {
             os << to_string(t.type);
         }

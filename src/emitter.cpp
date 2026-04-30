@@ -9,6 +9,19 @@ void Emitter::add_file(const std::string &filename) {
     progs.push_back(p.parseProgram());
 }
 
+std::vector<std::string> get_declared_names(ExprAST *lhs) {
+    if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs)) {
+        return {idNode->identifier.value};
+    } else if (auto binNode = dynamic_cast<BinaryExprAST *>(lhs)) {
+        if (binNode->op.value == ",") {
+            auto left_names = get_declared_names(binNode->lhs.get());
+            auto right_names = get_declared_names(binNode->rhs.get());
+            left_names.insert(left_names.end(), right_names.begin(), right_names.end());
+            return left_names;
+        }
+    }
+    return {};
+}
 void Emitter::emitcode(std::string filename) {
     std::vector<GlobalDeclarationAST *> globals;
     std::vector<FunctionAST *> functions;
@@ -25,9 +38,11 @@ void Emitter::emitcode(std::string filename) {
                 std::string extend = ext->pkg_name + "::" + ext->name.value;
                 program.declare_function({UINT64_MAX, extend, ext->proto->type_list(), ext->returnType, true});
             } else if (auto glob = dynamic_cast<GlobalDeclarationAST *>(statement.get())) {
-                std::string extend = glob->pkg_name + "::" + glob->identifier.value;
                 globals.push_back(glob);
-                global_map[extend] = glob;
+                for (const auto &name : get_declared_names(glob->lhs.get())) {
+                    std::string extend = glob->pkg_name + "::" + name;
+                    global_map[extend] = glob;
+                }
             } else if (auto struct_def = dynamic_cast<StructDefinitionAST *>(statement.get())) {
                 structs.push_back(struct_def);
             } else if (auto impl_def = dynamic_cast<ImplAST *>(statement.get())) {
@@ -66,9 +81,11 @@ void Emitter::emitcode(std::string filename) {
         s->codegen(program);
     }
     for (auto &g : globals) {
-        std::string extended_name = g->pkg_name + "::" + g->identifier.value;
-        if (state[extended_name] == 0) {
-            doofus(extended_name);
+        for (const auto &name : get_declared_names(g->lhs.get())) {
+            std::string extended_name = g->pkg_name + "::" + name;
+            if (state[extended_name] == 0) {
+                doofus(extended_name);
+            }
         }
     }
     for (auto &g : sorted_globals) {

@@ -3,7 +3,29 @@
 #include "opcode.hpp"
 #include "type.hpp"
 #include <iostream>
+#include <memory>
 
+void unroll(BinaryExprAST *expr, std::vector<ExprAST *> &out) {
+    if (expr->op != ",") {
+        expr->op.error("couldn't unroll ',' separated values");
+    }
+    if (auto left = dynamic_cast<BinaryExprAST *>(expr->lhs.get())) {
+        if (left->op == ",")
+            unroll(left, out);
+        else
+            out.push_back(expr->lhs.get());
+    } else {
+        out.push_back(expr->lhs.get());
+    }
+    if (auto right = dynamic_cast<BinaryExprAST *>(expr->rhs.get())) {
+        if (right->op == ",")
+            unroll(right, out);
+        else
+            out.push_back(expr->rhs.get());
+    } else {
+        out.push_back(expr->rhs.get());
+    }
+}
 void printSpace(int space) {
     for (int i = 0; i < space; i++)
         std::cout << ' ';
@@ -125,14 +147,25 @@ std::vector<std::string> BinaryExprAST::get_dependencies() {
     ldeps.insert(ldeps.end(), rdeps.begin(), rdeps.end());
     return ldeps;
 }
-
 Type BinaryExprAST::evaltype(Program &program) {
     Type ltype = lhs->evaltype(program);
     Type rtype = rhs->evaltype(program);
     if (op.value == ",") {
         Type total(ValueType::MULTIPLE);
-        total.push(ltype);
-        total.push(rtype);
+        if (ltype.is_multiple()) {
+            for (auto i : ltype.types) {
+                total.push(i);
+            }
+        } else {
+            total.push(ltype);
+        }
+        if (rtype.is_multiple()) {
+            for (auto i : rtype.types) {
+                total.push(i);
+            }
+        } else {
+            total.push(rtype);
+        }
         return total;
     }
     if (ltype != rtype) {
@@ -662,45 +695,93 @@ void StructAccessAST::codegen(Program &program) {
     program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
     program.push({load_type(type_size, type.is_unsigned()), {}});
 }
+void codegenForOneDeclaration(Program &program, ExprAST *expr, ExprAST *lhs, std::string pkg_name, bool is_const) {
+    Type expr_type = expr->evaltype(program);
+    if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs)) {
+        Identifier i = {idNode->identifier.value, expr_type, is_const};
+        expr->codegen(program);
+        program.declare(i);
+        program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
+    } else {
+        error("Invalid left-hand side for declaration.");
+    }
+}
+void codegenForAllDeclaration(Program &program, ExprAST *expr, ExprAST *lhs, std::string pkg_name, bool is_const) {
+    auto lhs_bin = dynamic_cast<BinaryExprAST *>(lhs);
+    auto rhs_bin = dynamic_cast<BinaryExprAST *>(expr);
 
-GlobalDeclarationAST::GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
-    : identifier(id), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
+    if (lhs_bin && rhs_bin && lhs_bin->op.value == "," && rhs_bin->op.value == ",") {
+        codegenForAllDeclaration(program, rhs_bin->lhs.get(), lhs_bin->lhs.get(), pkg_name, is_const);
+        codegenForAllDeclaration(program, rhs_bin->rhs.get(), lhs_bin->rhs.get(), pkg_name, is_const);
+    } else if (lhs_bin && lhs_bin->op.value == ",") {
+        Type r_type = expr->evaltype(program);
+        if (r_type.is_multiple()) {
+            std::vector<ExprAST *> lhs_vars;
+            unroll(lhs_bin, lhs_vars);
+            if (lhs_vars.size() != r_type.num_types()) {
+                error("declaration couldn't be performed (mismatched element counts)");
+            }
+
+            expr->codegen(program);
+            for (size_t i = 0; i < lhs_vars.size(); i++) {
+                if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs_vars[i])) {
+                    Identifier iden = {idNode->identifier.value, r_type.types[i], is_const};
+                    program.declare(iden);
+                } else {
+                    error("Invalid left-hand side for declaration.");
+                }
+            }
+            for (int i = lhs_vars.size() - 1; i >= 0; i--) {
+                if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs_vars[i])) {
+                    program.push(
+                        {bvm::OPCODE::STORE,
+                         {std::bit_cast<uint64_t>(program.getaddress(idNode->identifier.value, idNode->pkg_name))}});
+                }
+            }
+        } else {
+            error("declaration couldn't be performed (mismatched element counts)");
+        }
+    } else {
+        if (lhs_bin && rhs_bin && (lhs_bin->op.value == "," || rhs_bin->op.value == ",")) {
+            lhs->print();
+            expr->print();
+            error("declaration couldn't be performed (mismatched element counts)");
+        }
+        codegenForOneDeclaration(program, expr, lhs, pkg_name, is_const);
+    }
+}
+
+GlobalDeclarationAST::GlobalDeclarationAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg,
+                                           bool is_const)
+    : lhs(std::move(lhs)), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
 
 void GlobalDeclarationAST::print(int indent) {
     printSpace(indent);
     std::cout << "GlobalDeclarationAST: " << std::endl;
     indent += 2;
     printSpace(indent);
-    std::cout << "identifier: " << identifier << std::endl;
+    // std::cout << "identifier: " << identifier << std::endl;
     expr->print(indent);
 }
 
 void GlobalDeclarationAST::codegen(Program &program) {
-    Type type = expr->evaltype(program);
-    Identifier i = {identifier.value, type, is_const};
-    expr->codegen(program);
-    program.declare(i);
-    program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
+    codegenForAllDeclaration(program, expr.get(), lhs.get(), pkg_name, is_const);
 }
 
-DeclarationAST::DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
-    : identifier(id), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
+DeclarationAST::DeclarationAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const)
+    : lhs(std::move(lhs)), pkg_name(pkg), expr(std::move(e)), is_const(is_const) {}
 
 void DeclarationAST::print(int indent) {
     printSpace(indent);
     std::cout << "DeclarationAST: " << std::endl;
     indent += 2;
     printSpace(indent);
-    std::cout << "identifier: " << identifier << std::endl;
+    // std::cout << "identifier: " << identifier << std::endl;
     expr->print(indent);
 }
 
 void DeclarationAST::codegen(Program &program) {
-    Type type = expr->evaltype(program);
-    Identifier i = {identifier.value, type, is_const};
-    expr->codegen(program);
-    program.declare(i);
-    program.push({bvm::OPCODE::STORE, {std::bit_cast<uint64_t>(program.getaddress(i.name, pkg_name))}});
+    codegenForAllDeclaration(program, expr.get(), lhs.get(), pkg_name, is_const);
 }
 
 AssignmentAST::AssignmentAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg)
@@ -717,10 +798,9 @@ void AssignmentAST::print(int indent) {
     std::cout << "expr to: " << std::endl;
     expr->print(indent);
 }
-
-void AssignmentAST::codegen(Program &program) {
+void codegenForOneAssignment(Program &program, ExprAST *expr, ExprAST *lhs) {
     Type expr_type = expr->evaltype(program);
-    if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs.get())) {
+    if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs)) {
         bool is_iden_const = program.isconst(idNode->identifier.value, idNode->pkg_name);
         if (is_iden_const) {
             error("attempt to assign to constant value " + idNode->identifier.value + " failed.");
@@ -732,7 +812,7 @@ void AssignmentAST::codegen(Program &program) {
         expr->codegen(program);
         program.push({bvm::OPCODE::STORE,
                       {std::bit_cast<uint64_t>(program.getaddress(idNode->identifier.value, idNode->pkg_name))}});
-    } else if (auto arr = dynamic_cast<ArrayIndexedAST *>(lhs.get())) {
+    } else if (auto arr = dynamic_cast<ArrayIndexedAST *>(lhs)) {
         Type arr_type = arr->array->evaltype(program);
         Type element_type = arr_type[0];
         if (element_type != expr_type)
@@ -744,7 +824,7 @@ void AssignmentAST::codegen(Program &program) {
         arr->index->codegen(program);
         expr->codegen(program);
         program.push({store_type(element_type.size()), {}});
-    } else if (auto str_acc = dynamic_cast<StructAccessAST *>(lhs.get())) {
+    } else if (auto str_acc = dynamic_cast<StructAccessAST *>(lhs)) {
         Type struct_type = str_acc->expr->evaltype(program);
         StructInfo info = program.get_struct(struct_type.get_name());
         int offset = info.offsets[str_acc->field_name];
@@ -763,6 +843,63 @@ void AssignmentAST::codegen(Program &program) {
     } else {
         error("Invalid left-hand side in assignment");
     }
+}
+void codegenForAllAssignment(Program &program, ExprAST *expr, ExprAST *lhs) {
+    auto lhs_expr = dynamic_cast<BinaryExprAST *>(lhs);
+    auto rhs_expr = dynamic_cast<BinaryExprAST *>(expr);
+
+    if (rhs_expr && lhs_expr && lhs_expr->op.value == "," && rhs_expr->op.value == ",") {
+        codegenForAllAssignment(program, rhs_expr->rhs.get(), lhs_expr->rhs.get());
+        codegenForAllAssignment(program, rhs_expr->lhs.get(), lhs_expr->lhs.get());
+    } else if (lhs_expr && lhs_expr->op.value == ",") {
+        Type r_type = expr->evaltype(program);
+        if (r_type.is_multiple()) {
+            std::vector<ExprAST *> lhs_vars;
+            unroll(lhs_expr, lhs_vars);
+            if (lhs_vars.size() != r_type.num_types()) {
+                error("size mismatch in lhs and rhs in assigment");
+            }
+            expr->codegen(program);
+            for (int i = lhs_vars.size() - 1; i >= 0; i--) {
+                if (auto idNode = dynamic_cast<IdentifierExprAST *>(lhs_vars[i])) {
+                    bool is_iden_const = program.isconst(idNode->identifier.value, idNode->pkg_name);
+                    if (is_iden_const) {
+                        error("attempt to assign to constant value " + idNode->identifier.value + " failed.");
+                    }
+                    Type iden_type = program.gettype(idNode->identifier.value, idNode->pkg_name);
+                    if (r_type.types[i] != iden_type) {
+                        error("attempt to assign different type to " + idNode->identifier.value + " failed.");
+                    }
+                    program.push(
+                        {bvm::OPCODE::STORE,
+                         {std::bit_cast<uint64_t>(program.getaddress(idNode->identifier.value, idNode->pkg_name))}});
+                } else {
+                    error("Multiple assignment from function call only supports identifiers on the left hand side "
+                          "currently.");
+                }
+            }
+        } else {
+            error("size mismatch in lhs and rhs in assigment");
+        }
+    } else {
+        if (rhs_expr && lhs_expr && (lhs_expr->op.value == "," || rhs_expr->op.value == ",")) {
+            error("size mismatch in lhs and rhs in assigment");
+        }
+        codegenForOneAssignment(program, expr, lhs);
+    }
+}
+
+void AssignmentAST::codegen(Program &program) {
+    // auto lhs_expr = dynamic_cast<BinaryExprAST *>(lhs.get());
+    // auto rhs_expr = dynamic_cast<BinaryExprAST *>(expr.get());
+    // if (rhs_expr && lhs_expr && lhs_expr->op == "," && rhs_expr->op == ",") {
+    codegenForAllAssignment(program, expr.get(), lhs.get());
+    // } else {
+    //     if (rhs_expr && lhs_expr && (lhs_expr->op == "," || rhs_expr->op == ",")) {
+    //         error("size mismatch in lhs and rhs in assigment");
+    //     }
+    //     codegenForOneAssignment(program, expr.get(), lhs.get());
+    // }
 }
 
 PrototypeAST::PrototypeAST(std::vector<std::pair<Type, Token>> a, std::string pkg)
@@ -1017,11 +1154,12 @@ void ReturnAST::codegen(Program &program) {
     if (expr != nullptr) {
         expr->codegen(program);
         if (program.function_return_type != expr->evaltype(program)) {
-            error("return type doesnt match the function signature");
+            error("return type " + program.function_return_type.str() + " doesnt match the function signature " +
+                  expr->evaltype(program).str());
         }
     } else {
         if (program.function_return_type != Type(ValueType::VOID)) {
-            error("return type doesnt match the function signature");
+            error("return type " + program.function_return_type.str() + " doesnt match the function signature void");
         }
     }
     program.push_undeclare_for_return();
@@ -1105,14 +1243,26 @@ std::vector<std::string> StructInitAST::get_dependencies() {
 }
 
 Type StructInitAST::evaltype(Program &program) { return type; }
-
 void StructInitAST::codegen(Program &program) {
     StructInfo info = program.get_struct(type.get_name());
-    if (args.size() != info.fields.size())
+    std::vector<ExprAST *> args_unrolled;
+    if (args.size() == 1 && args[0]->evaltype(program).is_multiple()) {
+        if (auto vals = dynamic_cast<BinaryExprAST *>(args[0].get())) {
+            unroll(vals, args_unrolled);
+        } else {
+            for (auto &&i : args) {
+                args_unrolled.push_back(i.get());
+            }
+        }
+    } else {
+        for (auto &&i : args) {
+            args_unrolled.push_back(i.get());
+        }
+    }
+    if (args_unrolled.size() != info.fields.size())
         error("Struct init argument count mismatch.");
-
     program.push({bvm::OPCODE::MALLOC_STRUCT, {program.struct_full_name_to_program_def[info.name]}});
-    for (size_t i = 0; i < args.size(); i++) {
+    for (size_t i = 0; i < args_unrolled.size(); i++) {
         std::string field_name = info.fields[i].name;
         int offset = info.offsets[field_name];
         int type_size = info.fields[i].type.size();
@@ -1120,7 +1270,7 @@ void StructInitAST::codegen(Program &program) {
 
         program.push({bvm::OPCODE::DUP});
         program.push({bvm::OPCODE::PUSH, {(uint64_t)index}});
-        args[i]->codegen(program);
+        args_unrolled[i]->codegen(program);
         program.push({store_type(type_size), {}});
     }
 }

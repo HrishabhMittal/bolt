@@ -184,22 +184,22 @@ class StructAccessAST : public ExprAST {
 
 class GlobalDeclarationAST : public GlobalStatementAST {
   public:
-    Token identifier;
     bool is_const;
+    std::unique_ptr<ExprAST> lhs;
     std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    GlobalDeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const = false);
+    GlobalDeclarationAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };
 
 class DeclarationAST : public StatementAST {
   public:
-    Token identifier;
     bool is_const;
+    std::unique_ptr<ExprAST> lhs;
     std::string pkg_name;
     std::unique_ptr<ExprAST> expr;
-    DeclarationAST(Token id, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const = false);
+    DeclarationAST(std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> e, std::string pkg, bool is_const);
     virtual void print(int indent = 0) override;
     virtual void codegen(Program &program) override;
 };

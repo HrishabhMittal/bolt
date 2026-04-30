@@ -21,7 +21,7 @@ class Parser {
     Token expect(TokenType type, const std::string &val = "");
 
     Type parseTypeName();
-    Type parseSingularTypeName();
+    Type parseTypeNameList();
     std::unique_ptr<ReturnAST> parseReturn();
     std::unique_ptr<BreakContinueAST> parseBreakContinue();
     std::unique_ptr<ExprAST> parseValue(bool allowStructInit = true);
@@ -44,7 +44,6 @@ class Parser {
     std::unique_ptr<FunctionAST> parseFunction();
     std::unique_ptr<StatementAST> parseConditional();
     std::unique_ptr<StatementAST> parseWhile();
-    std::unique_ptr<AssignmentAST> parseAssignmentNoSemicolon();
     std::unique_ptr<StatementAST> parseFor();
     std::unique_ptr<PackageAST> parsePackage();
     std::unique_ptr<ImportAST> parseImport();
